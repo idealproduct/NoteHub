@@ -1,0 +1,61 @@
+[versions]
+agp = "9.1.1"
+kotlin = "2.2.10"
+ksp = "2.3.9"
+compose = "2024.09.00"
+core = "1.10.1"
+lifecycle = "2.8.7"
+activity = "1.9.3"
+navigation = "2.8.5"
+room = "2.8.4"
+datastore = "1.1.7"
+coroutines = "1.9.0"
+junit = "4.13.2"
+androidJunit = "1.3.0"
+espresso = "3.7.0"
+work = "2.10.5"
+camera = "1.5.3"
+credentials = "1.6.0"
+# 1.2.1 requires Kotlin metadata 2.4; retain the stable API compatible with AGP built-in Kotlin 2.2.
+googleid = "1.1.1"
+googleauth = "22.0.0"
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+
+[libraries]
+core = { module = "androidx.core:core-ktx", version.ref = "core" }
+lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+navigation = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-material = { module = "androidx.compose.material3:material3" }
+compose-test = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-testManifest = { module = "androidx.compose.ui:ui-test-manifest" }
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+junit = { module = "junit:junit", version.ref = "junit" }
+android-junit = { module = "androidx.test.ext:junit", version.ref = "androidJunit" }
+espresso = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+
+
+
+work = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+
+
+camera-core = { module = "androidx.camera:camera-core", version.ref = "camera" }
+camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camera" }
+camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camera" }
+camera-view = { module = "androidx.camera:camera-view", version.ref = "camera" }
+credentials = { module = "androidx.credentials:credentials", version.ref = "credentials" }
+credentials-google = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "credentials" }
+googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleid" }
+googleauth = { module = "com.google.android.gms:play-services-auth", version.ref = "googleauth" }

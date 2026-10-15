@@ -1,0 +1,11 @@
+.gradle/
+.kotlin/
+.idea/
+**/build/
+local.properties
+.phase1-backup/
+*.log
+.phase2-backup-*/
+.phase3-backup-*/
+.phase4-backup-*/
+.phase5-backup-*/
