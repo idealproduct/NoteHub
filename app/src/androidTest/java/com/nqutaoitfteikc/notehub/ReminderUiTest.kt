@@ -23,14 +23,18 @@ class ReminderUiTest {
         runBlocking { container.saveNote(null, NoteDraft(title)) }
         val noteId = runBlocking { container.observeNotes().first().single { it.title == title }.id }
         try {
-            compose.onNodeWithTag("calendar-content").performScrollToNode(hasTestTag("view-LIST"))
+            compose.onNodeWithTag("calendar-content").performScrollToNode(hasTestTag("view-dropdown"))
+            compose.onNodeWithTag("view-dropdown").performClick()
             compose.onNodeWithTag("view-LIST").performClick()
-            compose.onNodeWithTag("calendar-content").performScrollToNode(hasTestTag("open-reminders-$noteId"))
-            compose.onNodeWithTag("open-reminders-$noteId").performClick()
+            compose.onNodeWithTag("calendar-content").performScrollToNode(hasTestTag("note-$noteId"))
+            compose.onNodeWithTag("note-$noteId").performClick()
+            compose.onNodeWithTag("open-reminders-$noteId").performScrollTo().performClick()
             compose.onNodeWithText("提醒日期").performScrollTo().performTextReplacement(LocalDate.now().plusDays(2).toString())
             compose.onNodeWithTag("save-reminder").performScrollTo().performClick()
             compose.waitUntil(10000) { reminders(noteId).size == 1 }
             val first = reminders(noteId).single()
+            // Room emission precedes the ViewModel's finally block that re-enables save.
+            compose.waitUntil(10000) { compose.onAllNodes(hasTestTag("save-reminder") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("save-reminder").performScrollTo().performClick()
             compose.waitUntil(10000) { reminders(noteId).size == 2 }
             compose.onNodeWithTag("edit-reminder-${first.id}").performScrollTo().performClick()

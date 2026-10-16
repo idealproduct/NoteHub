@@ -9,3 +9,7 @@ local.properties
 .phase3-backup-*/
 .phase4-backup-*/
 .phase5-backup-*/
+.phase6-baseline.zip
+dist/
+
+.phase8-baseline.zip

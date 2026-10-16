@@ -1,8 +1,8 @@
 # 專案進度
 
-更新：2026-10-15（Asia/Taipei）
+更新：2026-10-16（Asia/Taipei）
 
-目前：Phase 1–4 已完成對應模擬器驗證；Phase 5 真實 Google 登入、唯讀 API、預覽／匯入／去重與已刪除副本手動重匯已通過，真正冷啟動只讀核對亦通過。最新單元 22 項、一般裝置 36 項與真實資料兩階段驗證通過。下一階段 Phase 6；實體裝置、大量真實分頁等限制見文末。
+目前：0.9.0 已完成照片預覽裁切修正與指定螢幕適應驗證。已建置、簽章驗證並更新安裝；28 項單元測試、最終 5 項版面＋直向實拍、橫向真實點擊／鍵盤／儲存，以及既有匯入資料冷啟動核對通過。完整回歸的中途失敗與後續針對性重測如實記錄於 0.9.0 章節，未宣稱最終版整套裝置測試一次全過。
 
 ## Phase 1 範圍
 
@@ -372,3 +372,201 @@ adb -s emulator-5554 shell am start -W -n com.nqutaoitfteikc.notehub/.MainActivi
 - 新增／更新 `ImportRangeTest`、`ImportSelectionTest`、`CalendarImportTest`、`CalendarImportSelectionUiTest`、`CalendarImportPersistenceTest`；新增 `scripts/Test-GoogleImportPersistence.ps1`，更新 README、GOOGLE_SETUP、PROJECT_STATUS。
 - Phase 5 的核心驗收已完成；下一階段 **Phase 6 設定與品質檢查**，再做核心流程整體檢查與最終 APK 整理。
 - 實體裝置／廠牌限制、其他 Android API、真實超過 250 筆的分頁、真實重複事件例外／撤銷授權／配額情境仍待外部測試。分頁、重複事件與相關錯誤目前有明確 fixture 測試，未宣稱這些都已在真實帳號上測過。
+
+## Phase 6 範圍與進度（2026-10-16）
+
+- 開始時 Git 已建立（HEAD b499b8c），工作目錄乾淨；保留現有專案，基線封存為 .phase6-baseline.zip。
+- 已確認 JDK 21.0.12.1、既有 app 模組與 assembleDebug／testDebugUnitTest／lintDebug 任務；模擬器 emulator-5554 起初離線，裝置驗收待恢復連線。
+- [x] 設定頁補齊相機權限／版本／時區／本機與 Google 資料說明。
+- [x] 錯誤訊息可關閉、繁體中文語言宣告、照片目錄失敗不阻止容器初始化。
+- [x] 各歷史 Room schema → v5 的升級資料保留與主題／權限／錯誤 UI 測試。
+- [x] 建置、單元、Lint、裝置回歸與真實匯入資料只讀冷啟動核對。
+- [x] 產出可安裝 APK、固定檔名與 SHA-256、更新驗收與外部限制。
+
+## Phase 6 最終驗收（2026-10-16）
+
+### 實作與修正
+
+- 設定頁新增實際相機狀態、明確的使用者授權／系統設定入口，回到 App 時重新檢查權限；不在查看設定時自動要求相機。
+- 設定頁使用 BuildConfig 顯示真實版本，並補上裝置時區、純本機保存、解除安裝資料刪除、Google 唯讀副本與手動重匯說明。
+- 全域錯誤使用可關閉訊息卡；不修改原記事、也不掩飾驗證失敗。失敗驗證測試核對沒有產生新記事。
+- 宣告繁體中文 localeConfig（API 33 以上生效），保留原本繁體中文介面與選擇器。Google／系統自有畫面不由 App 強制改語言。
+- 修正 PhotoFiles 建構時立即建立目錄的問題：改於實際寫入回報 IOException；不存在的空目錄無須清理，無法讀取的已存在目錄仍明確回報。測試使用被一般檔案阻擋的路徑，不冒充真實磁碟耗盡。
+- App 升版 0.6.0／versionCode 6；Room 維持 v5，資料表未變動，未新增無必要的 Migration，未使用 destructive fallback。
+
+### 真實命令與結果
+
+- `phase6-environment.log`：使用 JDK 21.0.12.1，確認既有 app 任務。裝置起初 offline，僅以 adb reconnect offline 恢復既有模擬器，沒有 wipe／重建裝置。
+- `phase6-settings-build.log`：先驗證設定與儲存修正的 assembleDebug／testDebugUnitTest／lintDebug，全部成功。
+- 第一輪 `phase6-acceptance.log`：新增設定測試在尚未組成的 LazyColumn 列直接 performScrollTo，造成 1 項測試定位失敗。修正為在清單上 performScrollToNode 後才斷言；未修改業務邏輯來繞過測試。
+- 最終 `phase6-final-acceptance.log`：`scripts/Test-Android.ps1 -Serial emulator-5554 -GrantReminderTestPermissions -GrantCameraTestPermissions` 完成；其執行 assembleDebug、assembleDebugAndroidTest、testDebugUnitTest、lintDebug 並安裝 App／測試 APK。
+- **單元 22／22，0 failures。**
+- Android runner **OK (44 tests)**；其中 2 項真實資料方法在一般套件中因未提供啟用參數而跳過，**42 項一般裝置測試實際執行通過**。測試環境重新核對為 **Android 17／API 37，emulator-5554**。
+- 新增 6 項一般裝置測試：三種主題跨 Activity 重建／實際相機狀態與版本政策／錯誤關閉不產生記事（3），歷史 v1–v4 升至 v5（1），未知主題值 fallback（1），照片目錄阻擋不使建構失敗（1）。
+- 全版本升級測試逐一依原始匯出 schema 建庫，Room 驗證最新結構，核對標題、描述、分類、完成狀態、時間／時區、提醒、照片與清理佇列，升級後仍可編輯。既有個別 Migration／CRUD／照片／提醒等測試也通過。
+- 相機／通知／精準鬧鐘權限由測試腳本保存並於 finally 還原（本輪 camera=True、notification=True、exact=allow）。沒有為測試清除使用者資料。
+- `scripts/Test-GoogleImportPersistence.ps1 -Serial emulator-5554` → `phase6-google-persistence-run.log`：兩個獨立測試程序 **1／1＋1／1 通過**，中間 am force-stop 後 MainActivity **COLD／Status ok**。
+- `phase6-google-persistence-counts.log`：本輪既有真實資料為 **3 筆來源／3 筆本機副本**，重啟前後來源與記事全欄位摘要一致。此步只讀本機，不重新呼叫 Google 或重授權；Phase 5 的真實 API 成功紀錄仍獨立保留。
+- **Lint 0 errors／29 warnings**。主要為既有版本更新提示、範本未使用資源、既有 KTX 建議及 localeConfig 僅 API 33 以上生效；未停用檢查或新增 baseline。Google ID 版本仍保留已驗證與 Kotlin 相容的 1.1.1。
+- `git diff --check` 通過，Git 有 CRLF 自動換行提醒，非程式或空白檢查錯誤。未自動提交，變更可直接審閱。
+
+### APK
+
+- `dist/NoteHub-0.6.0-debug.apk`，固定檔名的可安裝驗收版；另保留 Gradle 原輸出 app/build/outputs/apk/debug/app-debug.apk。
+- **37,512,663 bytes**；SHA-256 **2B8243A904F16140DB2F0EA6684F218F94B08F7B6F56971DB2E34D5D2E7B640B**，另寫入 dist/SHA256SUMS.txt。
+- `phase6-apk-signature.log`：apksigner verify 成功，實際 SHA-1 為既有 69:F1:3B:65:8A:7B:E6:1E:83:82:C7:20:39:A1:6A:0F:F7:2B:2F:6A，沒有新增／更換金鑰。
+- `phase6-apk-metadata.log`：套件 com.nqutaoitfteikc.notehub、versionCode 6、versionName 0.6.0、minSdk 28、targetSdk 36；已 install -r 成功並啟動。
+- 此為 debug 簽章驗收版，非已簽發布金鑰的商店版本。若正式發布，須自行提供發布簽章並在 Cloud 登記對應 Android OAuth 指紋；沒有編造發布金鑰或假設該設定已完成。
+
+### 修改檔案與外部限制
+
+- `app/build.gradle.kts`、AndroidManifest、res/xml/locales_config.xml：版本與繁體中文語言宣告。
+- `ui/NoteHubApp.kt`、新增 `ui/CameraPermissionSettings.kt`：可關閉錯誤與設定頁補齊。
+- `photos/PhotoFiles.kt`：延後目錄建立與缺少目錄清理規則。
+- 新增 `SettingsQualityTest.kt`、`MigrationCoverageTest.kt`；更新 PersistenceTest、PhotoRepositoryTest。
+- .gitignore、README、PROJECT_STATUS；新增 RELEASE_NOTES.md 與忽略版控的 dist APK／摘要。修改前基線封存 `.phase6-baseline.zip`；現有 Git 修改未被覆蓋。
+- 尚未完成的外部驗證：實體裝置、其他 Android API、廠牌 Doze／省電、真實磁碟耗盡、真實大量分頁／部分重複事件變更與撤權／配額情境。未將單元或 fixture 結果宣稱為這些環境已驗證。
+- 本輪裝置 UTC 自動校時正常、目前時區 GMT，App 依裝置時區顯示且設定頁明示；本輪未改動使用者裝置時區。使用者可在系統選擇臺北時區，記事儲存的瞬間與全天日期規則不變。
+- Phase 1–6 的核心開發與所列環境驗收完成；後續工作是上述外部裝置覆蓋、正式簽章／發布與使用者另行指定的產品調整。
+
+
+## 0.7.0 介面整理（2026-10-16）
+
+### 範圍與修改
+
+- [x] 保留現有 Git 未提交修改與所有業務邏輯，未重建專案或清除本機資料。
+- [x] `CalendarScreen.kt`：分類、狀態、顯示方式改為三個獨立下拉選單；長分類顯示省略但選單／無障礙描述保留全文，選單有最大高度並可捲動。
+- [x] 行事曆搜尋、日期列、月曆與記事卡片使用圓角與明確層級；保留四種視圖、跨日、全天、待辦、編輯、完成、提醒、照片入口。
+- [x] `Theme.kt`：統一藍色主色、淺灰／白色與深色配色；保留系統／淺色／深色設定，系統列圖示跟隨 App 實際主題。
+- [x] `NoteHubApp.kt`／`NavigationSymbol.kt`：底部使用原生繪圖圖示與文字，保留既有導覽及狀態保存。
+- [x] `CalendarDropdownTest.kt` 新增選單取消、篩選／視圖在 Activity 重建後保留的測試；既有 NavigationTest、ReminderUiTest 改以真正開啟選單操作。
+- [x] PhotoCaptureUiTest 等待鍵盤關閉後捲動到描述；ReminderUiTest 等待儲存按鈕恢復可用；SettingsQualityTest 驗證三種主題對應的系統列圖示。
+- [x] 版本 0.7.0／versionCode 7；Room schema 仍為 v5，沒有資料 Migration 或網路／授權邏輯變更。
+
+### 實際命令與結果
+
+以原 JDK 21 與既有 Gradle Wrapper 執行：
+
+```powershell
+./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain
+./scripts/Test-Android.ps1 -Serial emulator-5554 -GrantReminderTestPermissions -GrantCameraTestPermissions
+./scripts/Test-GoogleImportPersistence.ps1 -Serial emulator-5554
+# 已設 JAVA_HOME 後，以 SDK build-tools/36.1.0/apksigner.bat verify --verbose --print-certs 驗證 APK。
+```
+
+- 最終紀錄 `ui-refresh-final-theme-acceptance.log`：BUILD SUCCESSFUL；22 項單元測試通過；Lint 0 errors／29 warnings（既有版本、資源等建議）。
+- Android 17／API 37 模擬器 runner `OK (45 tests)`：43 項一般測試實際執行通過；2 項需 opt-in 的真實匯入資料驗證方法在此套件跳過，另以下列腳本分開執行。
+- 最終 `ui-refresh-google-persistence-final.log`：真實匯入來源與本機副本在兩個獨立測試程序中摘要一致，force-stop 後確認 COLD 啟動，各 1／1 通過。這是既有資料只讀核對，沒有假裝本次重新呼叫 Google API。
+- 中途一輪有 2 項間歇性 UI 測試失敗（描述輸入時鍵盤移動使節點被移除、第一筆 Room 寫入後尚未恢復按鈕就按第二次新增）；已補上實際非同步條件的等待，再完整重跑通過，沒有略過這些測試。
+- 目視檢查實際淺色與深色月曆，發現並修正 App 與系統主題不同時的狀態列對比。檢查後還原原深色設定，測試腳本還原相機、通知與精準鬧鐘權限。
+- `dist/NoteHub-0.7.0-debug.apk`：37,575,715 bytes，簽章 v2 驗證通過，已更新安裝。
+- SHA-256：`4DF361B9F6816DEEAD1F986165CD9B7B797D37DCBEB600A019B6C24EADBD54B7`。
+
+### 待辦與限制
+
+- [ ] 實體裝置、其他 Android API、各廠牌省電設定與不同螢幕／超大字體仍需額外驗證，未宣稱全部環境通過。
+- 本次不需新增外部設定；既有 Google Cloud 與 OAuth 設定仍適用。Google 真實連線的前次驗證及 API 分頁等限制沿用 Phase 5／6 紀錄。
+
+
+## 0.8.0 日行程、詳細資訊與搜尋（2026-10-16）
+
+### 本輪範圍與驗收
+
+- [x] 先檢查目前工作目錄、Git 修改、現有 CalendarScreen／CalendarRules／NoteHubApp／測試；未刪除或覆蓋既有 Phase 6／7 工作。修改前目前來源封存在已忽略的 `.phase8-baseline.zip`。
+- [x] 月曆點日期進入日檢視，提供返回月曆按鈕與系統返回鍵；選定日期保留。
+- [x] 所有行程清單卡片可開啟詳細頁；編輯、提醒管理移至詳細頁，保留完成切換與照片入口。通知開啟同一詳細頁；刪除後回到記事頁，避免留在已刪除事件。
+- [x] 搜尋範圍為全部／選定日／選定月／選定年，以選定日期為基準，顯示實際範圍；搜尋結果不再被目前視圖裁掉。搜尋期間前後操作按所選日／月／年移動；跨日事件採交集搜尋。無日期待辦只納入全部範圍。
+- [x] `TimelineRules.kt` 以半開區間裁切至當地日，保留分鐘位置與長度；重疊群組分欄，前一事件結束等於後一事件開始時可重用欄，連鎖／巢狀重疊仍不互相遮蔽。
+- [x] `DayTimeline.kt` 半透明卡片覆蓋時間表，與整點線對齊；時間表可上下捲動，多欄可左右捲動，避免把重疊事件壓成不可讀文字。
+- [x] 跨日指定時間事件逐日裁切，註明由前日延續／延續至次日；午夜結束不出現在次日。全天事件保持獨立區，完整跨日日期保留於清單與詳細頁。
+- [x] 時間表按實際時間排列，支援 23／25 小時的 DST 日，重複小時額外顯示時差；短事件仍依真實長度呈現，可從下方完整行程清單操作。
+- [x] 實際只讀檢查既有「台灣光復節」：目前本機資料為 GMT 2026/10/25 09:00–12:00，時間表呈現三小時卡片；點擊可開詳細頁，時間、編輯與 0 筆提醒入口一致。未把名稱含節日的指定時間事件擅自改成全天，也未修改原資料。
+
+### 修改檔案
+
+- 新增 `domain/TimelineRules.kt`、`ui/DayTimeline.kt`、`ui/NoteDetails.kt`。
+- 更新 `ui/CalendarScreen.kt`、`ui/NoteHubApp.kt`、`app/build.gradle.kts`（0.8.0／versionCode 8）。
+- 新增 `TimelineRulesTest.kt` 六項單元測試與 `DayTimelineUiTest.kt` 三項 UI 測試；更新 NavigationTest／ReminderUiTest 使用新的詳細頁入口。
+- 更新 `.gitignore`、README.md、PROJECT_STATUS.md、RELEASE_NOTES.md，以及已忽略 dist 內安裝檔與資訊。
+- Room 維持 schema v5，沒有新增依賴或變更 Google、照片、提醒排程業務邏輯。
+
+### 執行命令與真實結果
+
+```powershell
+./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain
+./scripts/Test-Android.ps1 -Serial emulator-5554 -GrantReminderTestPermissions -GrantCameraTestPermissions
+# 最後調整後更新安裝兩個 APK，再執行相關測試：
+adb -s emulator-5554 shell am instrument -w -e class com.nqutaoitfteikc.notehub.DayTimelineUiTest,com.nqutaoitfteikc.notehub.NavigationTest com.nqutaoitfteikc.notehub.test/androidx.test.runner.AndroidJUnitRunner
+./scripts/Test-GoogleImportPersistence.ps1 -Serial emulator-5554
+# 設定原 JDK JAVA_HOME 後，以 SDK apksigner verify --verbose --print-certs 驗證 APK。
+```
+
+- 最終建置 `calendar08-final-build.log`：BUILD SUCCESSFUL；28 項單元測試，0 failures；Lint 0 errors／29 warnings（既有版本／範本等建議）。初次 Kotlin 比較式解析及 Dp 運算編譯錯誤已修正並重跑，沒有忽略編譯錯誤。
+- 完整 Android 17／API 37 模擬器 `calendar08-acceptance.log`：runner OK (48 tests)，46 項一般測試實際執行通過，2 項 opt-in 真實資料方法在此跳過。包括實際 CameraX、多提醒與既有記事流程。
+- 最後卡片與整點線對齊、返回月曆調整後，`calendar08-final-ui.log`：DayTimelineUiTest 3 項＋NavigationTest 4 項，OK (7 tests)。沒有宣稱最後微調後再跑過整套 46 項。
+- 新 UI 測試直接驗證重疊卡片的畫面邊界不遮蔽、起始高度不同、卡片／清單開啟回呼、返回月曆、跨日延續標示、日／月／年搜尋結果；資料是隔離的測試 fixture，不冒充 Google 回傳或寫入正式資料庫。
+- `calendar08-google-persistence-final.log`：實際 force-stop 與 COLD 啟動，兩個獨立程序各 1／1 通過；來源帳本、記事內容與時間摘要一致。只讀既有真實資料，未重新呼叫 Google API。
+- 真實光復節日檢視已目視檢查，截圖 `dist/calendar08-day.png`；本次沒有改動裝置 GMT 時區。完整測試腳本還原相機、通知與精準鬧鐘權限。
+- APK `dist/NoteHub-0.8.0-debug.apk`：37,701,111 bytes；已安裝並確認 v2 簽章。
+- SHA-256：`09DB7D578DB07DAFEACFF01FF1D222F6D9FD720B8B4C4EC06247ACB28460986B`。
+
+### 待辦與驗證限制
+
+- [ ] 實體裝置、其他 API、超大字體、小螢幕與大量同時重疊事件仍可進一步驗證，未宣稱所有環境皆通過。
+- 本次沒有新增外部設定；Google OAuth／Calendar 唯讀設定沿用既有有效設定。
+
+
+## 0.9.0 照片預覽裁切與螢幕適應（2026-10-16）
+
+### 範圍與實作
+
+- 使用者補圖確認問題位於照片預覽：底部儲存按鈕被螢幕下緣遮住。檢查 Git 修改、預覽、圖片縮放、編輯頁，以及尺寸／密度／字體；保留既有未提交修改及資料。
+- `PhotoScreens.kt`：預覽改為 App 內完整頁面，沿用 Scaffold 實際安全視窗，避開原生全螢幕 Dialog 在此 Android 17 模擬器上的視窗偏移。關閉或系統返回鍵回到圖庫，保留原捲動位置。
+- 新增 `PhotoPreviewContent.kt`：可用空間由父視窗決定，另外保留鍵盤空間；關閉與儲存獨立於內容捲動。正常直向儲存置底，短視窗改頂端操作列；少於 180 dp 的極短空間，改為關閉／說明輸入／儲存單列，不再垂直堆疊。
+- 照片仍採 ContentScale.Fit 完整縮放，不裁切原圖；短視窗與鍵盤輸入優先提供說明欄，恢復空間後顯示照片。寬度至少 480 dp 的橫向視窗採照片／說明左右排列，內容寬度上限 1000 dp。
+- `NoteEditor.kt`：橫向實測發現 IME 開啟時原本標題、內容與底部儲存列擁擠；短視窗把儲存移到頂端、縮減垂直留白、描述最小行數降為一行。驗證、儲存、刪除及草稿狀態沿用原邏輯。
+- `CalendarScreen.kt`：標題取得受限寬度而可換行；小於 340 dp 或字體倍率超過 1.3 時三個篩選選單改直排。日期與照片草稿／圖庫多按鈕列改 FlowRow 換行。
+- 預覽以固定元件樹的自訂 Layout 測量照片、說明與操作位置，鍵盤縮放時不搬移輸入框；刪除曾造成失焦／反覆重組的可移動內容與手動焦點恢復暫行方案。
+- 新增 `PhotoPreviewLayoutTest.kt` 五項適應測試。固定小視窗 fixture 代表已扣除安全區的可用空間，避免再扣實體裝置的整個鍵盤高度；真實頁面的 IME 與儲存另外由 CameraX 實拍流程驗證。
+- `PhotoCaptureUiTest.kt` 增加「尚未開鍵盤，儲存照片說明按鈕就必須可見」的回歸斷言，避免只驗證輸入後的精簡操作列而漏掉原問題。
+- 版本 0.9.0／versionCode 9；Room v5、照片檔案／拍攝時間、提醒與 Google 匯入邏輯未變更，未新增依賴或外部設定。
+
+### 執行與結果記錄
+
+沿用 JDK 21、Gradle Wrapper、API 37 模擬器及原 SDK：
+
+```powershell
+./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain
+./scripts/Test-Android.ps1 -Serial emulator-5554 -GrantReminderTestPermissions -GrantCameraTestPermissions
+# 針對 NavigationTest、CalendarDropdownTest、PhotoPreviewLayoutTest、PhotoCaptureUiTest 重跑。
+# 暫以 adb shell wm size 1920x1080（density 480，即 640×360 dp）測試橫向；finally 還原原解析度。
+```
+
+測試 fixture 使用 320×480 dp、320×260 dp、320×140 dp、1.8 倍字體及目前可用視窗；僅為隔離 UI 測試，沒有冒充正式照片或 Google 資料。實拍測試則使用 CameraX 真實 JPEG、輸入記事與照片說明、更新 Room，核對拍攝時間保持不變。
+
+中途驗證發現並處理：
+
+1. 完整套件 `responsive09-acceptance.log` 的 51 個 runner 方法中，2 個 opt-in 方法跳過，48 個一般測試通過；CalendarDropdownTest 在結束活動時發生 PAUSED→DESTROYED 逾時。該測試後續重跑通過，未忽略例外，也未宣稱該次整套測試成功。
+2. 假定可用小視窗的 fixture 一度重複扣實體 IME 高度，及在不會真正關閉畫面的儲存回呼後繼續點擊、遇上鍵盤動畫；已修正 fixture 的空間定義與操作順序，保留儲存時可見的斷言。
+3. 橫向初次實拍後續記事編輯儲存失敗，定位為編輯頁空間不足，補上頂端儲存及較小留白後重跑通過。
+4. 目視原照片時發現 Dialog 雖通過輸入後的儲存測試，但正常未開鍵盤時底部仍出界；原生視窗檢查確認偏移後，改為 App 內完整頁面，並新增未輸入時的可見性回歸斷言。沒有以通過部分測試冒充原問題已修好。
+
+
+### 最終結果與交付
+
+- `responsive09-final-build.log`：BUILD SUCCESSFUL；28 項 JVM 單元測試通過；Lint 0 errors／29 warnings（既有版本、範本等建議）。
+- `responsive09-stable-portrait.log`：固定元件樹最終版，5 項 PhotoPreviewLayoutTest＋真實 CameraX PhotoCaptureUiTest，OK (6 tests)。包含尚未輸入時儲存按鈕可見、實際點入欄位、IME 顯示且欄位保有焦點後才輸入，並核對照片說明、記事描述及拍攝時間。
+- `responsive09-stable-landscape.log`：640×360 dp 橫向，同一真實點擊／鍵盤／照片與記事儲存流程，OK (1 test)，無人為介入。後來僅重跑直向與版面驗證、核對文件與 APK，未修改該版原始碼。
+- 原預覽裁切目視核對：開啟使用者原本 2026/10/16 07:03:13.098 拍攝的照片，沒有修改內容或說明。完整儲存按鈕已顯示於手勢列上方；文字 bounds 為 [545,2794][800,2855]。修正後截圖 `dist/responsive09-preview.png`。
+- `responsive09-google-persistence-final.log`：force-stop 後 COLD 啟動，既有 Google 匯入來源／本機副本摘要一致，兩個獨立程序各 1／1 通過；只讀本機資料，沒有重新呼叫 Google API。
+- 中途另曾揭露輸入框換位置失焦、過早請求焦點及反覆重組；最後改為同一元件樹只變更測量位置。舊版一次曾透過系統返回解除測試鍵盤等待，未把該次算作無介入驗收；以上 stable 兩份才是最終無介入結果。
+- 更新後原照片、記事、提醒及匯入資料保留；沒有 uninstall、重建資料庫或刪除使用者資料。測試只清理自行建立的 UUID fixture。
+- 已還原原始 1344×2992／density 480 螢幕與 1.0 系統字體；大字體測試僅使用測試內容的 1.8 fontScale。相機、通知及精準鬧鐘權限沿用／還原原設定。
+- `dist/NoteHub-0.9.0-debug.apk`：37,736,203 bytes，APK v2 簽章驗證通過，沿用原 debug 簽章及套件。
+- SHA-256：`B1A574BFACD2D6DE35FF9B9BCAB3203E59D0D3F93AAF4FD0A6CA4106301CE641`。
+
+### 待辦與限制
+
+- [ ] 實體手機、其他 Android API、超過已測字體倍率及更多極端分割視窗仍需額外驗證，未宣稱所有機型都已實測。
+- 最終自訂版面後執行了相關版面、直／橫向實拍及資料保留核對；未重新執行整套最終 53 個 runner 方法。前面完整回歸與各次失敗／修正均保留在紀錄中。
+- 本次不需新增 Google Cloud、OAuth 或其他外部設定；資料庫仍為 v5。

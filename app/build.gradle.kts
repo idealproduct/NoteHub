@@ -18,8 +18,8 @@ android {
         applicationId = "com.nqutaoitfteikc.notehub"
         minSdk = 28
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 9
+        versionName = "0.9.0"
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

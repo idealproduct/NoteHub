@@ -3,6 +3,8 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.nqutaoitfteikc.notehub.data.*
 import com.nqutaoitfteikc.notehub.domain.*
 import kotlinx.coroutines.*
@@ -14,6 +16,19 @@ import java.io.File
 import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class PersistenceTest {
+    @Test fun unknownStoredThemeFallsBackToSystemAndCanBeChanged() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.cacheDir, "theme-fallback-${UUID.randomUUID()}.preferences_pb")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val store = PreferenceDataStoreFactory.create(scope = scope) { file }
+            store.edit { it[stringPreferencesKey("theme_mode")] = "UNKNOWN_FUTURE_THEME" }
+            val repository = LocalSettingsRepository(store)
+            assertEquals(ThemeMode.SYSTEM, repository.theme.first())
+            repository.setTheme(ThemeMode.LIGHT)
+            assertEquals(ThemeMode.LIGHT, repository.theme.first())
+        } finally { scope.coroutineContext[Job]!!.cancelAndJoin(); file.delete() }
+    }
     @Test fun roomPersistsAcrossCloseAndReopen() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val name = "test-${UUID.randomUUID()}.db"
