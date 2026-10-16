@@ -6,7 +6,6 @@ import java.io.FileOutputStream
 import java.io.IOException
 
 class PhotoFiles(private val directory: File) {
-    init { check(directory.isDirectory || directory.mkdirs()) { "無法建立照片儲存目錄" } }
     fun file(name: String): File {
         require(name.matches(Regex("[a-f0-9-]{36}\\.jpg"))) { "照片檔名格式不正確" }
         val result = File(directory, name)
@@ -18,6 +17,7 @@ class PhotoFiles(private val directory: File) {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         require(bounds.outMimeType == "image/jpeg" && bounds.outWidth > 0 && bounds.outHeight > 0) { "相機未提供可讀取的 JPEG 照片" }
+        if (!directory.isDirectory && !directory.mkdirs()) throw IOException("無法建立照片儲存目錄，請確認可用空間")
         val target = file(name)
         val partial = File(directory, "$name.part")
         try {
@@ -30,6 +30,7 @@ class PhotoFiles(private val directory: File) {
         if (target.exists() && !target.delete()) throw IOException("無法移除照片檔案")
     }
     fun prune(referenced: Set<String>) {
+        if (!directory.exists()) return
         val files = directory.listFiles() ?: throw IOException("無法讀取照片目錄")
         files.filter { it.isFile && ((it.name.endsWith(".jpg") && it.name !in referenced) || it.name.endsWith(".jpg.part")) }.forEach {
             if (!it.delete()) throw IOException("無法清理未使用的照片檔案")

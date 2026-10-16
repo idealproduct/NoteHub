@@ -7,6 +7,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -30,32 +31,52 @@ fun NoteHubApp(model: HubViewModel, openedNoteId: String? = null, consumeOpenedN
     LaunchedEffect(Unit) { model.restoreReminders(); model.recoverPhotoFiles() }
     LaunchedEffect(openedNoteId, state.loading) {
         if (openedNoteId != null && !state.loading) {
-            nav.navigate("editor/$openedNoteId/${java.time.LocalDate.now().toEpochDay()}") { launchSingleTop = true }
+            nav.navigate("details/$openedNoteId") { launchSingleTop = true }
             consumeOpenedNote()
         }
     }
     val dark = when (state.theme) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.LIGHT -> false; ThemeMode.DARK -> true }
     NoteHubTheme(darkTheme = dark) {
         Scaffold(bottomBar = {
-            if (entry?.destination?.route?.startsWith("editor") != true && entry?.destination?.route?.startsWith("reminders") != true && entry?.destination?.route?.startsWith("camera") != true && entry?.destination?.route?.startsWith("gallery") != true) NavigationBar {
+            if (entry?.destination?.route?.startsWith("details") != true && entry?.destination?.route?.startsWith("editor") != true && entry?.destination?.route?.startsWith("reminders") != true && entry?.destination?.route?.startsWith("camera") != true && entry?.destination?.route?.startsWith("gallery") != true) NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 listOf("notes" to "記事", "photos" to "照片", "settings" to "設定").forEach { (route, label) ->
                     NavigationBarItem(selected = (entry?.destination?.route ?: "notes") == route,
+                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer, selectedTextColor = MaterialTheme.colorScheme.primary),
                         onClick = { nav.navigate(route) {
                             popUpTo(nav.graph.startDestinationId) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
-                        } }, icon = { Text(when (route) { "notes" -> "記"; "photos" -> "照"; else -> "設" }) }, label = { Text(label) })
+                        } }, icon = { NavigationSymbol(route) }, label = { Text(label) })
                 }
             }
         }) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
-                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+                state.error?.let { error ->
+                    Card(Modifier.fillMaxWidth().padding(12.dp).testTag("app-error"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(error, color = MaterialTheme.colorScheme.onErrorContainer)
+                            TextButton(onClick = model::clearError) { Text("關閉訊息") }
+                        }
+                    }
+                }
                 NavHost(navController = nav, startDestination = "notes", modifier = Modifier.weight(1f)) {
                     composable("notes") {
                         CalendarScreen(state, onAdd = { day -> model.clearError(); nav.navigate("editor/new/$day") },
-                            onEdit = { id -> model.clearError(); nav.navigate("editor/$id/${java.time.LocalDate.now().toEpochDay()}") }, onComplete = model::complete,
-                            onReminders = { id -> model.clearError(); nav.navigate("reminders/$id") },
-                            onPhotos = { id -> model.clearError(); nav.navigate("gallery/$id") })
+                            onOpen = { id -> model.clearError(); nav.navigate("details/$id") }, onComplete = model::complete)
+                    }
+                    composable("details/{id}") { stack ->
+                        val note = state.notes.find { it.id == stack.arguments?.getString("id") }
+                        if (state.loading) CircularProgressIndicator()
+                        else if (note == null) Column(Modifier.padding(20.dp)) {
+                            Text("此事項已不存在")
+                            TextButton(onClick = { nav.popBackStack() }) { Text("返回") }
+                        } else NoteDetails(note, state.saving, state.reminders.count { it.noteId == note.id },
+                            onBack = { nav.popBackStack() },
+                            onEdit = { model.clearError(); nav.navigate("editor/${note.id}/0") },
+                            onReminders = { model.clearError(); nav.navigate("reminders/${note.id}") },
+                            onPhotos = { model.clearError(); nav.navigate("gallery/${note.id}") },
+                            onComplete = { model.complete(note.id, it) })
                     }
                     composable("editor/{id}/{day}") { backStack ->
                         val id = backStack.arguments?.getString("id")?.takeUnless { it == "new" }
@@ -69,7 +90,7 @@ fun NoteHubApp(model: HubViewModel, openedNoteId: String? = null, consumeOpenedN
                             }
                         } else NoteEditor(note, day, state.saving, onBack = { nav.popBackStack() },
                             onSave = { draft -> model.save(id, draft) { nav.popBackStack() } },
-                            onDelete = { if (id != null) model.delete(id) { nav.popBackStack() } },
+                            onDelete = { if (id != null) model.delete(id) { if (nav.previousBackStackEntry?.destination?.route == "details/{id}") nav.popBackStack("notes", false) else nav.popBackStack() } },
                             categories = state.notes.map { it.category }.filter { it.isNotEmpty() }.distinct().sorted())
                     }
                     composable("reminders/{id}") { backStack ->
@@ -121,7 +142,7 @@ fun NoteHubApp(model: HubViewModel, openedNoteId: String? = null, consumeOpenedN
 }
 @Composable
 private fun SettingsScreen(theme: ThemeMode, setTheme: (ThemeMode) -> Unit, model: HubViewModel, onImport: () -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.testTag("settings-content"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("設定", style = MaterialTheme.typography.headlineLarge) }
         item { Text("外觀", style = MaterialTheme.typography.titleLarge) }
         items(ThemeMode.entries) { mode ->
@@ -131,10 +152,13 @@ private fun SettingsScreen(theme: ThemeMode, setTheme: (ThemeMode) -> Unit, mode
             }
         }
         item { ReminderPermissions(model.reminderPlatform, model::restoreReminders) }
+        item { CameraPermissionSettings() }
         item { Button(onClick = onImport) { Text("Google 行事曆匯入") } }
         item { Text("資料儲存", style = MaterialTheme.typography.titleLarge) }
-        item { Text("記事與設定保存在此裝置。解除安裝會刪除資料，目前不提供雲端備份。") }
-        item { Text("NoteHub 0.5.0 · 本機記事與 Google 行事曆唯讀匯入") }
+        item { Text("記事、照片與設定只保存在此裝置，沒有自有後端或雲端資料庫；解除安裝會刪除資料，目前不提供備份或匯出。") }
+        item { Text("Google 匯入是經您授權的唯讀副本，不會寫回或刪除 Google 事件。已刪除的本機副本可在預覽中手動勾選重新匯入。") }
+        item { Text("裝置時區：${java.time.ZoneId.systemDefault().id}。指定時間依目前時區顯示，全天事件保留原日期。") }
+        item { Text("NoteHub ${com.nqutaoitfteikc.notehub.BuildConfig.VERSION_NAME}（${com.nqutaoitfteikc.notehub.BuildConfig.VERSION_CODE}） · 本機記事與 Google 行事曆唯讀匯入") }
     }
 }
 

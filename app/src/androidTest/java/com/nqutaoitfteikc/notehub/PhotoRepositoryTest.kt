@@ -26,6 +26,20 @@ internal fun photoFixture(): ByteArray = ByteArrayOutputStream().use { output ->
 }
 @RunWith(AndroidJUnit4::class)
 class PhotoRepositoryTest {
+    @Test fun blockedPhotoDirectoryDoesNotFailConstructionAndReportsStorageErrors() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val blocked = File(context.cacheDir, "blocked-photo-${UUID.randomUUID()}").apply { writeText("fixture") }
+        try {
+            val files = PhotoFiles(blocked)
+            try { files.write("${UUID.randomUUID()}.jpg", photoFixture()); fail("應回報儲存錯誤") }
+            catch (error: IOException) { assertTrue(error.message!!.contains("照片儲存目錄")) }
+            try { files.prune(emptySet()); fail("應回報清理錯誤") }
+            catch (_: IOException) { }
+            val absent = File(context.cacheDir, "absent-photo-${UUID.randomUUID()}")
+            PhotoFiles(absent).prune(emptySet())
+            assertFalse(absent.exists())
+        } finally { blocked.delete() }
+    }
     @Test fun delayedCommitDescriptionAppendAndRemovalPreserveCaptureTime() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val name = "photos-${UUID.randomUUID()}.db"

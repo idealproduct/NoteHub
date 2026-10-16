@@ -54,16 +54,35 @@ fun NoteEditor(note: Note?, initialDay: Long, saving: Boolean, onBack: () -> Uni
         confirmButton = { TextButton(enabled = !saving, onClick = { delete = false; onDelete() }) { Text("確認刪除") } },
         dismissButton = { TextButton(enabled = !saving, onClick = { delete = false }) { Text("取消") } })
 
-    Column(Modifier.fillMaxSize().imePadding()) {
+    fun saveDraft() {
+            error = null
+            try {
+                val draft = if (note?.photoCapturedAt != null) NoteDraft(title, description, category) else when (kind) {
+                    ScheduleKind.TODO -> NoteDraft(title, description, category)
+                    ScheduleKind.ALL_DAY -> NoteDraft(title, description, category, kind,
+                        LocalDate.parse(startDate, dateInputFormat).toEpochDay(), LocalDate.parse(endDate, dateInputFormat).plusDays(1).toEpochDay())
+                    ScheduleKind.TIMED -> NoteDraft(title, description, category, kind,
+                        startMillis = CalendarRules.resolveLocal(LocalDate.parse(startDate, dateInputFormat), LocalTime.parse(startTime, timeInputFormat), zone),
+                        endMillis = CalendarRules.resolveLocal(LocalDate.parse(endDate, dateInputFormat), LocalTime.parse(endTime, timeInputFormat), zone), zoneId = zone.id)
+                }.validated()
+                onSave(draft)
+            } catch (_: DateTimeException) { error = "日期或時間格式不正確，請使用 yyyy-MM-dd 與 HH:mm，或使用選擇按鈕" }
+            catch (e: IllegalArgumentException) { error = e.message ?: "請檢查輸入內容" }
+
+    }
+    BoxWithConstraints(Modifier.fillMaxSize().imePadding()) {
+    val compact = maxHeight < 360.dp
+    Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(enabled = !saving, onClick = { back() }) { Text("返回") }
-            Text(if (note == null) "新增事項" else "編輯事項", modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.titleLarge)
+            if (!compact) Text(if (note == null) "新增事項" else "編輯事項", modifier = Modifier.weight(1f).padding(12.dp), style = MaterialTheme.typography.titleLarge)
             if (note != null) TextButton(enabled = !saving, onClick = { delete = true }) { Text("刪除") }
+            if (compact) Button(enabled = !saving, onClick = ::saveDraft, modifier = Modifier.testTag("editor-save")) { Text("儲存") }
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = if (compact) 4.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(title, { title = it; dirty = true }, label = { Text("事項標題") }, singleLine = true,
                 enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor-title"))
-            OutlinedTextField(description, { description = it; dirty = true }, label = { Text("描述") }, minLines = 2,
+            OutlinedTextField(description, { description = it; dirty = true }, label = { Text("描述") }, minLines = if (compact) 1 else 2,
                 enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor-description"))
             OutlinedTextField(category, { category = it; dirty = true }, label = { Text("分類（可自行輸入）") }, singleLine = true,
                 enabled = !saving, modifier = Modifier.fillMaxWidth().testTag("editor-category"))
@@ -93,22 +112,10 @@ fun NoteEditor(note: Note?, initialDay: Long, saving: Boolean, onBack: () -> Uni
             }
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp).testTag("editor-error")) }
-        Button(enabled = !saving, modifier = Modifier.fillMaxWidth().padding(16.dp).testTag("editor-save"), onClick = {
-            error = null
-            try {
-                val draft = if (note?.photoCapturedAt != null) NoteDraft(title, description, category) else when (kind) {
-                    ScheduleKind.TODO -> NoteDraft(title, description, category)
-                    ScheduleKind.ALL_DAY -> NoteDraft(title, description, category, kind,
-                        LocalDate.parse(startDate, dateInputFormat).toEpochDay(), LocalDate.parse(endDate, dateInputFormat).plusDays(1).toEpochDay())
-                    ScheduleKind.TIMED -> NoteDraft(title, description, category, kind,
-                        startMillis = CalendarRules.resolveLocal(LocalDate.parse(startDate, dateInputFormat), LocalTime.parse(startTime, timeInputFormat), zone),
-                        endMillis = CalendarRules.resolveLocal(LocalDate.parse(endDate, dateInputFormat), LocalTime.parse(endTime, timeInputFormat), zone), zoneId = zone.id)
-                }.validated()
-                onSave(draft)
-            } catch (_: DateTimeException) { error = "日期或時間格式不正確，請使用 yyyy-MM-dd 與 HH:mm，或使用選擇按鈕" }
-            catch (e: IllegalArgumentException) { error = e.message ?: "請檢查輸入內容" }
-        }) { Text(if (saving) "儲存中…" else "儲存事項") }
+        if (!compact) Button(enabled = !saving, modifier = Modifier.fillMaxWidth().padding(16.dp).testTag("editor-save"), onClick = ::saveDraft) { Text(if (saving) "儲存中…" else "儲存事項") }
     }
+}
+
 }
 
 fun ScheduleKind.label() = when (this) { ScheduleKind.TODO -> "無時間待辦"; ScheduleKind.ALL_DAY -> "全天"; ScheduleKind.TIMED -> "指定時間" }

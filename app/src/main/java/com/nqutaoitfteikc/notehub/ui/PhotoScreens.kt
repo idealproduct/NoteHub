@@ -2,6 +2,8 @@ package com.nqutaoitfteikc.notehub.ui
 
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,8 +18,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.nqutaoitfteikc.notehub.domain.*
 import com.nqutaoitfteikc.notehub.photos.PhotoFiles
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +59,7 @@ fun PhotoImage(photo: Photo, files: PhotoFiles, modifier: Modifier = Modifier, m
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun PhotoHubScreen(state: HubState, model: HubViewModel, onCamera: (String, String?) -> Unit, onNote: (String) -> Unit) {
     val drafts = state.photos.filter { it.noteId == null }.groupBy { it.sessionId }.toList().sortedByDescending { it.second.minOf { photo -> photo.capturedAt } }
     val notes = state.notes.filter { it.photoCapturedAt != null }.sortedByDescending { it.photoCapturedAt }
@@ -81,7 +82,7 @@ fun PhotoHubScreen(state: HubState, model: HubViewModel, onCamera: (String, Stri
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${captureLabel(photos.minOf { it.capturedAt })} · ${photos.size} 張")
                     PhotoImage(photos.first(), model.photoFiles, Modifier.fillMaxWidth().height(140.dp), 600)
-                    Row {
+                    FlowRow {
                         TextButton(onClick = { onCamera(sessionId, null) }, modifier = Modifier.testTag("resume-draft-$sessionId")) { Text("繼續拍攝與儲存") }
                         TextButton(onClick = { discard = sessionId }) { Text("捨棄草稿") }
                     }
@@ -105,28 +106,31 @@ fun PhotoHubScreen(state: HubState, model: HubViewModel, onCamera: (String, Stri
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun PhotoGalleryScreen(note: Note, photos: List<Photo>, state: HubState, model: HubViewModel, onBack: () -> Unit, onEdit: () -> Unit, onCamera: (String) -> Unit) {
     var previewId by rememberSaveable { mutableStateOf<String?>(null) }
+    val galleryScroll = rememberLazyListState()
     var removeId by rememberSaveable { mutableStateOf<String?>(null) }
     if (removeId != null) AlertDialog(onDismissRequest = { removeId = null }, title = { Text("移除此照片？") }, text = { Text("照片檔案將刪除，記事時間與其他照片不變。") },
         confirmButton = { TextButton(enabled = !state.saving, onClick = { model.removePhoto(requireNotNull(removeId)); removeId = null }) { Text("確認移除照片") } },
         dismissButton = { TextButton(onClick = { removeId = null }) { Text("取消") } })
-    photos.find { it.id == previewId }?.let { photo ->
-        Dialog(onDismissRequest = { previewId = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Surface(Modifier.fillMaxSize()) {
-                var caption by rememberSaveable(photo.id) { mutableStateOf(photo.caption) }
-                Column(Modifier.fillMaxSize().padding(16.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton(onClick = { previewId = null }) { Text("關閉預覽") }
-                    PhotoImage(photo, model.photoFiles, Modifier.fillMaxWidth().weight(1f), 2048)
-                    Text("拍攝時間：${captureLabel(photo.capturedAt)}")
-                    OutlinedTextField(caption, { caption = it }, label = { Text("照片說明") }, modifier = Modifier.fillMaxWidth().testTag("photo-caption"), maxLines = 3, enabled = !state.saving)
-                    Button(enabled = !state.saving, onClick = { model.photoCaption(photo.id, caption) { previewId = null } }, modifier = Modifier.testTag("save-photo-caption")) { Text("儲存照片說明") }
-                }
+    val preview = photos.find { it.id == previewId }
+    if (preview != null) {
+        BackHandler { previewId = null }
+        var caption by rememberSaveable(preview.id) { mutableStateOf(preview.caption) }
+        Surface(Modifier.fillMaxSize()) {
+            PhotoPreviewContent(preview.capturedAt, caption, { caption = it }, state.saving,
+                onClose = { previewId = null },
+                onSave = { model.photoCaption(preview.id, caption) { previewId = null } },
+                // Scaffold already reserves system bars; only the extra IME area is needed here.
+                contentInsets = WindowInsets.ime.exclude(WindowInsets.systemBars)) { modifier ->
+                PhotoImage(preview, model.photoFiles, modifier, 2048)
             }
         }
+        return
     }
-    LazyColumn(Modifier.fillMaxSize().testTag("photo-gallery"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Row { TextButton(onClick = onBack) { Text("返回") }; TextButton(onClick = onEdit) { Text("編輯記事描述") } } }
+    LazyColumn(Modifier.fillMaxSize().testTag("photo-gallery"), state = galleryScroll, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { FlowRow { TextButton(onClick = onBack) { Text("返回") }; TextButton(onClick = onEdit) { Text("編輯記事描述") } } }
         item { Text(note.title, style = MaterialTheme.typography.headlineLarge) }
         item { Text("記事時間：${captureLabel(requireNotNull(note.photoCapturedAt))}", modifier = Modifier.testTag("photo-note-time")) }
         item { Text(note.description.ifEmpty { "尚未輸入描述" }) }
@@ -138,7 +142,7 @@ fun PhotoGalleryScreen(note: Note, photos: List<Photo>, state: HubState, model: 
                     PhotoImage(photo, model.photoFiles, Modifier.fillMaxWidth().height(240.dp).clickable { previewId = photo.id })
                     Text("拍攝：${captureLabel(photo.capturedAt)}")
                     if (photo.caption.isNotEmpty()) Text(photo.caption)
-                    Row {
+                    FlowRow {
                         TextButton(onClick = { previewId = photo.id }, modifier = Modifier.testTag("preview-photo-${photo.id}")) { Text("預覽與照片說明") }
                         TextButton(enabled = !state.saving, onClick = { removeId = photo.id }, modifier = Modifier.testTag("remove-photo-${photo.id}")) { Text("移除照片") }
                     }

@@ -21,9 +21,10 @@ class NavigationTest {
     private val container get() = (compose.activity.application as NoteHubApplication).container
     private fun notes() = runBlocking { container.observeNotes().first() }
     private fun scrollTo(matcher: SemanticsMatcher) { compose.onNodeWithTag("calendar-content").performScrollToNode(matcher) }
-    private fun listMode() { scrollTo(hasTestTag("view-LIST")); compose.onNodeWithTag("view-LIST").performClick() }
+    private fun listMode() { scrollTo(hasTestTag("view-dropdown")); compose.onNodeWithTag("view-dropdown").performClick(); compose.onNodeWithTag("view-LIST").performClick() }
+    private fun monthMode() { scrollTo(hasTestTag("view-dropdown")); compose.onNodeWithTag("view-dropdown").performClick(); compose.onNodeWithTag("view-MONTH").performClick() }
     private fun search(value: String) { scrollTo(hasTestTag("search")); compose.onNodeWithTag("search").performTextReplacement(value) }
-    private fun waitSaved(title: String) { compose.waitUntil(10000) { notes().any { it.title == title } }; compose.waitUntil(10000) { compose.onAllNodesWithTag("calendar-content").fetchSemanticsNodes().isNotEmpty() } }
+    private fun waitSaved(title: String) { compose.waitUntil(10000) { notes().any { it.title == title } }; compose.waitForIdle(); if (compose.onAllNodesWithTag("note-details").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithText("返回").performClick(); compose.waitUntil(10000) { compose.onAllNodesWithTag("calendar-content").fetchSemanticsNodes().isNotEmpty() } }
 
     @Test fun localizedDateAndTimePickersOpenAndCancel() {
         compose.onNodeWithTag("add-note").performClick()
@@ -61,10 +62,12 @@ class NavigationTest {
             compose.onNodeWithText(title).assertIsDisplayed()
             compose.onNodeWithContentDescription("標記完成：$title").performClick()
             compose.waitUntil(10000) { notes().single { it.id == id }.completed }
-            scrollTo(hasText("已完成"))
+            scrollTo(hasTestTag("status-dropdown"))
+            compose.onNodeWithTag("status-dropdown").performClick()
             compose.onNodeWithText("已完成").performClick()
             scrollTo(hasText(title))
-            compose.onNodeWithContentDescription("編輯：$title").performClick()
+            compose.onNodeWithTag("note-$id").performClick()
+            compose.onNodeWithContentDescription("編輯：$title").performScrollTo().performClick()
             compose.onNodeWithTag("editor-title").performTextReplacement(changed)
             compose.onNodeWithTag("editor-save").performClick()
             waitSaved(changed)
@@ -73,11 +76,13 @@ class NavigationTest {
             compose.onNodeWithText(changed).assertIsDisplayed()
             assertTrue(notes().single { it.id == id }.completed)
             search(token)
-            scrollTo(hasText("全部分類"))
+            scrollTo(hasTestTag("category-dropdown"))
+            compose.onNodeWithTag("category-dropdown").performClick()
             compose.onAllNodesWithText(token).filter(hasClickAction()).onFirst().performClick()
             scrollTo(hasText(changed))
             compose.onNodeWithText(changed).assertIsDisplayed()
-            compose.onNodeWithContentDescription("編輯：$changed").performClick()
+            compose.onNodeWithTag("note-$id").performClick()
+            compose.onNodeWithContentDescription("編輯：$changed").performScrollTo().performClick()
             compose.onNodeWithText("刪除").performClick()
             compose.onNodeWithText("取消").performClick()
             compose.onNodeWithTag("editor-title").assertTextContains(changed)
@@ -112,18 +117,21 @@ class NavigationTest {
             waitSaved(token)
             id = notes().single { it.title == token }.id
             assertEquals(day.plusDays(3).toEpochDay(), notes().single { it.id == id }.endDayExclusive)
-            search(token)
+            search("")
             scrollTo(hasTestTag("day-${day.plusDays(1)}"))
             compose.onNodeWithTag("day-${day.plusDays(1)}").performClick()
             scrollTo(hasTestTag("note-$id"))
             compose.onNodeWithTag("note-$id").assertIsDisplayed()
+            monthMode()
             scrollTo(hasTestTag("day-${day.plusDays(3)}"))
             compose.onNodeWithTag("day-${day.plusDays(3)}").performClick()
             scrollTo(hasText("這一天沒有符合條件的事項"))
             compose.onNodeWithText("這一天沒有符合條件的事項").assertIsDisplayed()
+            monthMode()
             scrollTo(hasTestTag("day-$day"))
             compose.onNodeWithTag("day-$day").performClick()
-            scrollTo(hasTestTag("view-WEEK"))
+            scrollTo(hasTestTag("view-dropdown"))
+            compose.onNodeWithTag("view-dropdown").performClick()
             compose.onNodeWithTag("view-WEEK").performClick()
             scrollTo(hasTestTag("week-$day"))
             compose.onNodeWithTag("week-$day").performClick()

@@ -56,6 +56,9 @@ class PhotoCaptureUiTest {
             compose.activityRule.scenario.recreate()
             compose.onNodeWithTag("camera-content").performScrollToNode(hasTestTag("photo-note-title"))
             compose.onNodeWithTag("photo-note-title").performTextInput(title)
+            // Let the IME finish closing before LazyColumn relocates the next editor.
+            androidx.test.espresso.Espresso.closeSoftKeyboard()
+            compose.waitForIdle()
             compose.onNodeWithTag("camera-content").performScrollToNode(hasTestTag("photo-note-description"))
             compose.onNodeWithTag("photo-note-description").performTextInput("拍完之後才輸入的描述")
             val saveAt = System.currentTimeMillis()
@@ -69,6 +72,17 @@ class PhotoCaptureUiTest {
             assertEquals(originalTime, notes().single { it.id == noteId }.photoCapturedAt)
             compose.onNodeWithTag("photo-gallery").performScrollToNode(hasTestTag("preview-photo-${second.id}"))
             compose.onNodeWithTag("preview-photo-${second.id}").performClick()
+            compose.onNodeWithTag("save-photo-caption").assertIsDisplayed()
+            compose.onNodeWithTag("photo-caption").performClick()
+            try { compose.waitUntil(10000) {
+                val insets = androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
+                insets?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true &&
+                    compose.onAllNodes(hasTestTag("photo-caption") and isFocused()).fetchSemanticsNodes().isNotEmpty()
+            } } catch (error: androidx.compose.ui.test.ComposeTimeoutException) {
+                val insets = androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
+                val focused = compose.onAllNodes(hasTestTag("photo-caption") and isFocused()).fetchSemanticsNodes().isNotEmpty()
+                throw AssertionError("照片輸入：IME=${insets?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())}，焦點=$focused", error)
+            }
             compose.onNodeWithTag("photo-caption").performTextInput("第二張照片說明")
             compose.onNodeWithTag("save-photo-caption").performClick()
             compose.waitUntil(10000) { photos().single { it.id == second.id }.caption == "第二張照片說明" }
