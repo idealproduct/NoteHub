@@ -6,20 +6,31 @@ import com.nqutaoitfteikc.notehub.domain.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 
 data class HubState(val notes: List<Note> = emptyList(), val theme: ThemeMode = ThemeMode.SYSTEM, val loading: Boolean = true, val saving: Boolean = false, val error: String? = null, val reminders: List<Reminder> = emptyList(),
     val photos: List<Photo> = emptyList(), val pendingPhotoCleanup: Int = 0, val capturingSession: String? = null)
 class HubViewModel(private val container: AppContainer) : ViewModel() {
+    val calendarSyncFactory = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T = CalendarSyncViewModel(container) as T
+    }
     val calendarImportFactory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T = CalendarImportViewModel(
-            container.googleIdentity, com.nqutaoitfteikc.notehub.calendar.GoogleCalendarApi(), container.calendarImports) as T
+            container.googleIdentity, com.nqutaoitfteikc.notehub.calendar.GoogleCalendarApi(), container.calendarImports,
+            stopSync = { container.calendarSync.mutex.withLock { container.syncSettings.disable(); container.cancelCalendarSync() } }) as T
     }
     private var captureToken: String? = null
     private var captureTimeout: kotlinx.coroutines.Job? = null
     private val mutableState = MutableStateFlow(HubState())
     val state = mutableState.asStateFlow()
     init {
+        viewModelScope.launch {
+            try { container.syncSettings.flow.first().let { if (it.enabled) container.scheduleCalendarSync(it.hours) } }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { report(e, "無法恢復定期同步，請開啟同步設定後重試") }
+        }
         viewModelScope.launch {
             container.observePhotos().catch { report(it, "無法讀取照片資料，請重新開啟 App 再試") }
                 .collect { photos -> mutableState.update { it.copy(photos = photos) } }

@@ -10,6 +10,7 @@ data class CalendarImportEntity(val account: String, val calendarId: String, val
 data class CalendarImportStatus(val calendarId: String, val instanceKey: String, val noteExists: Boolean)
 @Dao
 interface CalendarImportDao {
+    @Query("SELECT noteId FROM calendar_imports") suspend fun allImportedNoteIds(): List<String>
     @Query("SELECT * FROM calendar_imports WHERE account = :account") suspend fun forAccount(account: String): List<CalendarImportEntity>
     @Query("SELECT * FROM calendar_imports WHERE account = :account AND calendarId = :calendarId AND instanceKey = :instanceKey") suspend fun get(account: String, calendarId: String, instanceKey: String): CalendarImportEntity?
     @Query("SELECT i.calendarId, i.instanceKey, (n.id IS NOT NULL) AS noteExists FROM calendar_imports i LEFT JOIN notes n ON n.id = i.noteId WHERE i.account = :account") suspend fun statuses(account: String): List<CalendarImportStatus>

@@ -120,7 +120,7 @@ class PhotoRepositoryTest {
             db.execSQL("INSERT INTO reminders VALUES('r','v3',999999,'rev',1,NULL,'PENDING')")
             db.version = 3
         }
-        val db = Room.databaseBuilder(context, NoteDatabase::class.java, name).addMigrations(NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5).build()
+        val db = Room.databaseBuilder(context, NoteDatabase::class.java, name).addMigrations(NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6).build()
         try {
             assertEquals("舊記事", db.notes().get("v3")?.title)
             assertNull(db.notes().get("v3")?.photoCapturedAt)

@@ -46,8 +46,8 @@ class SettingsQualityTest {
         val label = when { !camera -> "相機：此裝置未提供鏡頭"; allowed -> "相機：已允許"; else -> "相機：未允許" }
         compose.onNodeWithText(label).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("相機權限設定").assertExists()
-        compose.onNodeWithTag("settings-content").performScrollToNode(hasText("記事、照片與設定只保存在此裝置", substring = true))
-        compose.onNodeWithText("記事、照片與設定只保存在此裝置", substring = true).assertIsDisplayed()
+        compose.onNodeWithTag("settings-content").performScrollToNode(hasText("記事、照片與設定保存在此裝置", substring = true))
+        compose.onNodeWithText("記事、照片與設定保存在此裝置", substring = true).assertIsDisplayed()
         compose.onNodeWithTag("settings-content").performScrollToNode(hasText("NoteHub ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）", substring = true))
         compose.onNodeWithText("NoteHub ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）", substring = true).assertIsDisplayed()
     }

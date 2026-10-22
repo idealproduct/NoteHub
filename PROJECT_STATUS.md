@@ -1,8 +1,38 @@
 # 專案進度
 
-更新：2026-10-16（Asia/Taipei）
+更新：2026-10-22（Asia/Taipei）
 
-目前：0.9.0 已完成照片預覽裁切修正與指定螢幕適應驗證。已建置、簽章驗證並更新安裝；28 項單元測試、最終 5 項版面＋直向實拍、橫向真實點擊／鍵盤／儲存，以及既有匯入資料冷啟動核對通過。完整回歸的中途失敗與後續針對性重測如實記錄於 0.9.0 章節，未宣稱最終版整套裝置測試一次全過。
+目前：0.10.0 已建置並更新安裝 Pixel 9 Pro，加入照片匯出、詳情頁照片、照片提醒入口與選用 Google 雙向同步。28 項單元測試、Lint 與最終完整模擬器回歸通過（64 項：62 通過、2 項真實匯入資料 opt-in 測試略過）。系統檔案工具實際匯出也已成功。使用者已回報 Google 雙向驗證成功；只讀核對確認每 1 小時同步已啟用，首次工作完成，仍有 1 筆衝突等待使用者選擇版本。
+
+## 0.10.0 範圍與驗證（2026-10-22）
+
+- [x] 保留目前乾淨 Git 基準開始修改；未重建專案、清除 App 或覆寫使用者資料。
+- [x] 照片匯出：系統 CreateDocument 選擇目的地，私有原檔複製後才寫入 EXIF 拍攝時間、毫秒、時差與方向，所有 I/O 在背景執行。
+- [x] 詳情頁直接顯示照片、點照片預覽；保留新增照片與說明編輯。
+- [x] 照片圖庫加入提醒入口，複用獨立 AlarmManager 排程與權限處理。
+- [x] 使用者明確選擇「雙向同步」與「提醒既有照片記事」；新增讀寫授權，手動匯入仍唯讀。
+- [x] WorkManager 獨立週期與立即工作、網路條件、指數退避、狀態持久化、背景授權不足提示與重新排程。
+- [x] Google 新事件分頁、重複發生逐次連結、全天／跨日、雙基準比較、ETag、穩定上傳識別避免重試重複。
+- [x] 首次內容不同、雙邊修改及刪除進入人工處理。照片時間固定；照片檔案與提醒、分類、完成狀態不會上傳。
+- [x] Room schema v6 與 5→6 Migration；歷史 v1–v5 升級測試保留原記事、照片、提醒與匯入紀錄。
+- [ ] 真實 Google 新增／修改／刪除確認／衝突／背景週期驗收，需額外 calendar.events 授權及使用者選定行事曆。
+- [x] 使用者完成真實讀寫授權與啟用並回報「驗證成功」。只讀核對 DataStore：sync_enabled=true、sync_hours=1、狀態「同步完成，1 筆衝突待處理」；完成時間 2026-10-22 14:50:40.653（Asia/Taipei，epoch 1792651840653）。此次核對沒有觸發同步或改動任何 Google 事件。
+- [ ] 上述 1 筆衝突尚待使用者在 App 選擇版本。未擅自採用本機或 Google；也未以首次工作完成宣稱雙邊新增／修改／刪除及實際每小時週期等全部情境均已獨立驗證。
+- [ ] 實體手機與其他 Android API 的照片匯出、背景同步及提醒行為。
+
+建置：JDK 21、現有 Wrapper／`:app`，`assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug` 通過（feature10-acceptance-build.log）。Lint 0 errors／29 warnings；沒有壓制新增錯誤。
+
+最終建置紀錄：feature10-final-build-all.log，四項任務全部成功；原始碼與 dist/NoteHub-0.10.0-debug.apk 雜湊一致。APK 37,933,299 bytes，SHA-256 `4A9C34B26973583DC7C30922CED941AC4664948F4005F58655216E9597475F0A`，v2 debug 簽章已驗證（feature10-signature.log）。使用 `adb -s emulator-5554 install -r` 保留資料更新 App 與測試 APK。
+
+最終完整裝置測試：`adb -s emulator-5554 shell am instrument -w -r com.nqutaoitfteikc.notehub.test/androidx.test.runner.AndroidJUnitRunner`，feature10-final-full-device.log **OK (64 tests)**，85.460 秒；實際 62 項通過、2 項需要 googlePersistenceRun 的真實匯入資料核對依設計略過。包含 6 項同步替身測試、同步設定／入口、實際 CameraX 拍照／說明／追加、5 項照片適應版面、照片 AlarmManager 通知、EXIF 匯出、歷史 Migration、既有 CRUD／行事曆／提醒／主題等。最終測試後未修改產品原始碼。
+
+系統匯出實測：在 Pixel 9 Pro 使用真實既有照片 →「匯出照片」→ Android 系統 Downloads → SAVE，返回 App 顯示「照片已匯出」；確認 `/sdcard/Download/NoteHub_1792649247663_ee0a0339.jpg` 存在（202,900 bytes）。此為使用者照片的匯出副本，保留在模擬器 Downloads，原記事不變。系統檔案工具使用裝置語言顯示英文字，App 本身文案為繁體中文。
+
+針對性測試：Pixel_9_Pro／emulator-5554，feature10-sync-device-retry.log **OK (9 tests)**。包含 5 項 Google 替身同步測試、1 項匯出副本 EXIF／原檔不變、1 項照片直接顯示／入口、1 項照片記事兩個真實 AlarmManager 通知與獨立取消、1 項 v1–v5 升級。Google 替身明確不代表真實 API 成功。
+
+中途失敗與修正：第一次 lint 在新增測試來源尚在寫入時發生分析器內部錯誤，完整重跑通過；同步測試發現 JSON null 日期欄位判斷問題，改為檢查非 null；通知取消測試改為等待 NotificationManager 的異步結果，重跑 9/9 通過。初版使用平台 EXIF 造成兩項 lint 警告，改用 CameraX 已解析的 AndroidX ExifInterface 1.4.2，版本集中宣告後回復原 29 warnings。第一輪完整 63 項僅新增同步入口測試找不到 LazyColumn 尚未組合的項目，修正為先對清單 performScrollToNode，並增加恢復上傳回應遺失測試；最終 64 項如上通過。登出 App 也會停止背景同步，避免清除登入偏好後仍在背景更新。
+
+外部設定與真實驗收步驟見 SYNC_GUIDE.md。既有 Web client、套件與 SHA-1 不變；不得將先前唯讀授權當成已取得事件寫入權限。所有後續歷史章節保持當時結果，以下 v0.9.0 等數據不代表本次已測試。
 
 ## Phase 1 範圍
 

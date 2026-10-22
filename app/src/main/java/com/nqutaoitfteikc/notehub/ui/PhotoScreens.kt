@@ -107,8 +107,9 @@ fun PhotoHubScreen(state: HubState, model: HubViewModel, onCamera: (String, Stri
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-fun PhotoGalleryScreen(note: Note, photos: List<Photo>, state: HubState, model: HubViewModel, onBack: () -> Unit, onEdit: () -> Unit, onCamera: (String) -> Unit) {
-    var previewId by rememberSaveable { mutableStateOf<String?>(null) }
+fun PhotoGalleryScreen(note: Note, photos: List<Photo>, state: HubState, model: HubViewModel, onBack: () -> Unit, onEdit: () -> Unit, onCamera: (String) -> Unit,
+    initialPhotoId: String? = null, onReminders: () -> Unit = {}) {
+    var previewId by rememberSaveable { mutableStateOf(initialPhotoId) }
     val galleryScroll = rememberLazyListState()
     var removeId by rememberSaveable { mutableStateOf<String?>(null) }
     if (removeId != null) AlertDialog(onDismissRequest = { removeId = null }, title = { Text("移除此照片？") }, text = { Text("照片檔案將刪除，記事時間與其他照片不變。") },
@@ -134,6 +135,7 @@ fun PhotoGalleryScreen(note: Note, photos: List<Photo>, state: HubState, model: 
         item { Text(note.title, style = MaterialTheme.typography.headlineLarge) }
         item { Text("記事時間：${captureLabel(requireNotNull(note.photoCapturedAt))}", modifier = Modifier.testTag("photo-note-time")) }
         item { Text(note.description.ifEmpty { "尚未輸入描述" }) }
+        item { OutlinedButton(onClick = onReminders) { Text("管理提醒（${state.reminders.count { it.noteId == note.id }} 筆）") } }
         item { Button(enabled = !state.saving && state.capturingSession == null, onClick = { onCamera(java.util.UUID.randomUUID().toString()) }, modifier = Modifier.testTag("append-photos")) { Text("加入更多照片") } }
         if (photos.isEmpty()) item { Text("這篇記事目前沒有照片，原始拍攝時間仍保留。") }
         items(photos, key = { it.id }) { photo ->
@@ -142,6 +144,7 @@ fun PhotoGalleryScreen(note: Note, photos: List<Photo>, state: HubState, model: 
                     PhotoImage(photo, model.photoFiles, Modifier.fillMaxWidth().height(240.dp).clickable { previewId = photo.id })
                     Text("拍攝：${captureLabel(photo.capturedAt)}")
                     if (photo.caption.isNotEmpty()) Text(photo.caption)
+                    PhotoExportButton(photo, model.photoFiles)
                     FlowRow {
                         TextButton(onClick = { previewId = photo.id }, modifier = Modifier.testTag("preview-photo-${photo.id}")) { Text("預覽與照片說明") }
                         TextButton(enabled = !state.saving, onClick = { removeId = photo.id }, modifier = Modifier.testTag("remove-photo-${photo.id}")) { Text("移除照片") }

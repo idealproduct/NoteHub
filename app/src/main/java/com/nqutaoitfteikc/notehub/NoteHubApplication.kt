@@ -10,7 +10,7 @@ import com.nqutaoitfteikc.notehub.photos.*
 import java.io.File
 private val Context.settingsStore by preferencesDataStore(name = "settings")
 class AppContainer(private val context: Context) {
-    private val database = Room.databaseBuilder(context, NoteDatabase::class.java, "notehub.db").addMigrations(NoteDatabase.MIGRATION_1_2, NoteDatabase.MIGRATION_2_3, NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5).build()
+    private val database = Room.databaseBuilder(context, NoteDatabase::class.java, "notehub.db").addMigrations(NoteDatabase.MIGRATION_1_2, NoteDatabase.MIGRATION_2_3, NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6).build()
     private val notes = RoomNoteRepository(database.notes())
     private val settings = LocalSettingsRepository(context.settingsStore)
     val observeNotes = ObserveNotes(notes)
@@ -28,6 +28,12 @@ class AppContainer(private val context: Context) {
         override suspend fun change(noteId: String, action: suspend () -> Unit) = reminders.change(noteId, action)
         override suspend fun delete(noteId: String, action: suspend () -> Unit) = reminders.delete(noteId) { photos.deleteNoteInTransaction(noteId, action) }
     }
+    val syncSettings = com.nqutaoitfteikc.notehub.calendar.CalendarSyncSettingsRepository(context.settingsStore)
+    val calendarSync = com.nqutaoitfteikc.notehub.calendar.CalendarSyncEngine(database, noteEffects)
+    val syncConflicts get() = database.calendarSync().conflicts()
+    fun scheduleCalendarSync(hours: Int) = com.nqutaoitfteikc.notehub.calendar.CalendarSyncWorker.schedule(context, hours)
+    fun syncCalendarNow() = com.nqutaoitfteikc.notehub.calendar.CalendarSyncWorker.now(context)
+    fun cancelCalendarSync() = com.nqutaoitfteikc.notehub.calendar.CalendarSyncWorker.cancel(context)
     fun schedulePhotoCleanup() = PhotoCleanupWorker.enqueue(context)
     val observePhotos = ObservePhotos(photos)
     val storePhoto = StorePhoto(photos)

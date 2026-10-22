@@ -3,7 +3,9 @@ package com.nqutaoitfteikc.notehub.domain
 import java.time.LocalDate
 import java.time.ZoneId
 
-data class GoogleCalendar(val id: String, val title: String, val zone: String)
+data class GoogleCalendar(val id: String, val title: String, val zone: String, val accessRole: String = "reader") {
+    val writable: Boolean get() = accessRole in setOf("owner", "writer")
+}
 data class ImportRange(val first: LocalDate, val last: LocalDate, val zone: ZoneId) {
     init { require(!last.isBefore(first) && last.toEpochDay() - first.toEpochDay() <= 366) { "日期範圍須介於 1 至 367 天" } }
     // Instant's ISO representation includes seconds; OffsetDateTime.toString() may omit :00.

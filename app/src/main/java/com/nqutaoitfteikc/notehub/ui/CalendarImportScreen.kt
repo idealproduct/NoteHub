@@ -51,7 +51,7 @@ fun CalendarImportScreen(model: CalendarImportViewModel, onBack: () -> Unit) {
             if (state.account == null) Button(onClick = { activity?.let(model::signIn) }, enabled = model.configured && activity != null && !working) { Text("使用 Google 帳號登入") }
             else {
                 OutlinedButton(onClick = model::signOut, enabled = !working) { Text("登出此 App") }
-                Text("登出會清除本次存取狀態，保留本機記事；撤銷授權可至 Google 帳戶的第三方連線設定。")
+                Text("登出會停止定期雙向同步並清除本次存取狀態，保留兩邊已有資料；撤銷授權可至 Google 帳戶的第三方連線設定。")
                 Button(onClick = model::authorize, enabled = !working) { Text(if (state.authorized) "重新確認唯讀授權" else "授權讀取行事曆") }
             }
         }
@@ -81,7 +81,7 @@ fun CalendarImportScreen(model: CalendarImportViewModel, onBack: () -> Unit) {
         state.preview?.let { preview ->
             item {
                 Text("預覽 ${preview.events.size} 筆", style = MaterialTheme.typography.titleLarge)
-                Text("已取消事件略過 ${preview.cancelled} 筆。仍存在的本機副本會跳過；已刪除副本預設不勾選，可自行勾選重新匯入。不覆蓋本機修改，Google 後續變更不會自動同步，Google 提醒不會自動建立本機鬧鐘。")
+                Text("已取消事件略過 ${preview.cancelled} 筆。仍存在的本機副本會跳過；已刪除副本預設不勾選，可自行勾選重新匯入。手動匯入不覆蓋本機修改；持續更新請另行啟用雙向同步。Google 提醒不會自動建立本機鬧鐘。")
                 Button(onClick = { confirm = true }, enabled = !working && state.selectedEvents.isNotEmpty()) { Text("確認匯入 ${state.selectedEvents.size} 筆") }
             }
             items(preview.events, key = { "event:${it.calendarId.length}:${it.calendarId}${it.instanceKey}" }) { event ->

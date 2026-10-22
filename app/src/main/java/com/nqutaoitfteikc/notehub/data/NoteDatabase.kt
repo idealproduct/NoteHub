@@ -30,13 +30,19 @@ interface NoteDao {
     @Query("UPDATE notes SET completed = :completed WHERE id = :id") suspend fun setCompleted(id: String, completed: Boolean): Int
 }
 
-@Database(entities = [NoteEntity::class, ReminderEntity::class, PhotoEntity::class, PhotoDeletionEntity::class, CalendarImportEntity::class], version = 5, exportSchema = true)
+@Database(entities = [NoteEntity::class, ReminderEntity::class, PhotoEntity::class, PhotoDeletionEntity::class, CalendarImportEntity::class, CalendarSyncLink::class], version = 6, exportSchema = true)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun notes(): NoteDao
     abstract fun reminders(): ReminderDao
     abstract fun photos(): PhotoDao
     abstract fun calendarImports(): CalendarImportDao
+    abstract fun calendarSync(): CalendarSyncDao
     companion object {
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS calendar_sync (account TEXT NOT NULL, calendarId TEXT NOT NULL, eventId TEXT NOT NULL, noteId TEXT NOT NULL, localHash TEXT NOT NULL, remoteHash TEXT NOT NULL, conflict TEXT NOT NULL, PRIMARY KEY(account, calendarId, eventId))")
+            }
+        }
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS calendar_imports (account TEXT NOT NULL, calendarId TEXT NOT NULL, instanceKey TEXT NOT NULL, eventId TEXT NOT NULL, noteId TEXT NOT NULL, importedAt INTEGER NOT NULL, PRIMARY KEY(account, calendarId, instanceKey))")

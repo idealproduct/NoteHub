@@ -14,6 +14,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 val CALENDAR_READ_SCOPES = listOf("https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events.readonly")
+val CALENDAR_SYNC_SCOPES = listOf("https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events")
 class GoogleIdentity(private val context: Context, val clientId: String) {
     private val credentials = CredentialManager.create(context)
     private val authorization = Identity.getAuthorizationClient(context)
@@ -27,12 +28,12 @@ class GoogleIdentity(private val context: Context, val clientId: String) {
         // ID token is deliberately not retained or sent anywhere; GIS binds authorization to this account.
         return google.id.trim().lowercase(java.util.Locale.ROOT)
     }
-    suspend fun authorize(email: String): AuthorizationResult = authorization.authorize(
+    suspend fun authorize(email: String, scopes: List<String> = CALENDAR_READ_SCOPES): AuthorizationResult = authorization.authorize(
         AuthorizationRequest.builder().setAccount(Account(email, "com.google"))
-            .setRequestedScopes(CALENDAR_READ_SCOPES.map(::Scope)).build()).awaitResult()
+            .setRequestedScopes(scopes.map(::Scope)).build()).awaitResult()
     fun resolve(data: Intent): AuthorizationResult = authorization.getAuthorizationResultFromIntent(data)
-    fun token(result: AuthorizationResult): String {
-        check(result.grantedScopes.containsAll(CALENDAR_READ_SCOPES)) { "尚未授予所有行事曆唯讀權限" }
+    fun token(result: AuthorizationResult, scopes: List<String> = CALENDAR_READ_SCOPES): String {
+        check(result.grantedScopes.containsAll(scopes)) { "尚未授予所需的行事曆權限，請重新授權" }
         return result.accessToken?.takeIf { it.isNotBlank() } ?: error("未取得 Google 存取授權，請重新授權")
     }
     suspend fun clearExpiredToken(token: String) { authorization.clearToken(ClearTokenRequest.builder().setToken(token).build()).awaitResult() }

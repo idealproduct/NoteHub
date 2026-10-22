@@ -1,6 +1,15 @@
 # NoteHub
 
-原生 Android 本機記事與行事曆，Kotlin / Jetpack Compose / Material 3。Phase 1–6 核心功能與對應模擬器驗證已完成，最新介面版本為 0.9.0。真實 Google 唯讀匯入、去重、手動重匯與本機冷啟動資料保留已驗證；其他裝置與外部情境限制見 PROJECT_STATUS.md。
+原生 Android 本機記事與行事曆，Kotlin / Jetpack Compose / Material 3。最新版本為 0.10.0，加入照片匯出、詳情頁直接顯示照片、照片提醒入口與選用 Google 雙向定期同步。雙向同步需額外讀寫授權及啟用；真實 Google 雙向驗證結果與其他限制見 PROJECT_STATUS.md。既有唯讀匯入仍可獨立使用。
+
+## 0.10.0 照片與雙向同步
+
+- 事件詳細頁直接顯示照片，點選可預覽及編輯說明；可逐張透過系統檔案工具匯出 JPEG 副本，保留拍攝時間、時差、毫秒與方向，原始檔不變。
+- 照片頁提供管理提醒入口，沿用每篇記事多筆獨立 AlarmManager 排程。
+- 設定新增 Google 雙向同步，需另行授權事件讀寫並明確啟用。可選一個可寫入行事曆，每 1／6／12／24 小時或立即同步。
+- 同步標題、描述與時間；衝突與刪除等待人工確認。照片、提醒、分類及完成狀態保留本機。
+- Room schema v6 增加同步對應及兩邊基準，明確提供 v5→v6 Migration。沒有新增後端。
+- 完整範圍、設定與驗收步驟：[SYNC_GUIDE.md](SYNC_GUIDE.md)。
 
 ## 0.9.0 照片預覽與螢幕適應
 
@@ -95,13 +104,13 @@ adb -s emulator-5554 shell am instrument -w -e persistenceRun unique-run-id -e c
 
 Room v4。`MIGRATION_1_2` 只新增欄位與索引，保留舊資料；v1 記事歸為無時間待辦。`app/schemas` 保存 v1–v4 結構，未使用 destructive migration。已以實際 SQLite v1 建庫、Room 升級與重開驗證。
 
-純本機儲存；關閉 Android 備份與資料轉移；沒有網路權限、雲端資料庫或自有後端。解除安裝會刪除資料，目前不提供匯出或備份。
+本機儲存；關閉 Android 備份與資料轉移；沒有雲端資料庫或自有後端。Google 功能使用網路與明確授權；雙向同步需另行啟用。解除安裝會刪除 App 內資料；0.10.0 可逐張匯出照片副本，尚未提供完整資料備份。
 
 分類為事項上的自訂文字，可於編輯時改名／清空；篩選列由現有分類產生，未提供獨立分類管理頁。資料目前透過 Room Flow 載入後做篩選，尚未進行大量資料效能基準測試。
 
 ## 後續階段
 
-下一階段 Phase 5 為真實授權的 Google Calendar 唯讀匯入，需外部 Google Cloud／OAuth 設定；Phase 6 為整體品質檢查。目前提醒與照片仍需實體裝置驗收。
+以上為 Phase 4 當時的驗收紀錄；後續 Phase 5 唯讀匯入與 Phase 6 品質檢查已完成。0.10.0 新增選用雙向同步，真實讀寫及實體裝置驗收範圍見最新 PROJECT_STATUS.md。
 
 ## 相容性參考
 
@@ -176,7 +185,7 @@ APK 與測試 APK 安裝後：
 - Credential Manager 處理登入、Google Identity Services AuthorizationClient 處理行事曆唯讀授權，兩者明確分開；不使用 Firebase 或自有後端。
 - CalendarList 與 Events 皆讀完所有分頁才提供預覽，失敗不匯入半批結果；重複事件以 singleEvents 展開，移動例外以原發生時間去重。
 - Google 全天 end.date 保留為 exclusive end；指定時間保留實際時差與事件時區，跨日事件交由既有行事曆顯示。
-- Room v5 以來源帳號／行事曆／事件唯一鍵防止重複；整批匯入原子交易，重匯不覆蓋本機修改；已刪除副本預設不勾選，可手動勾選重新匯入。這是一次複製，不是雙向或持續同步。
+- Room 來源帳號／行事曆／事件唯一鍵防止重複；整批手動匯入原子交易，重匯不覆蓋本機修改；已刪除副本預設不勾選，可手動勾選重新匯入。手動匯入仍為一次複製；0.10.0 選用雙向同步是獨立授權及啟用的功能。資料庫目前為 v6。
 - Google 提醒不會自動匯入為本機鬧鐘；匯入後可自行設定多提醒。
 - 權杖只存在匯入頁記憶體，不寫入 DataStore、Room 或日誌；登出保留本機記事。
 - 新增相依版本集中管理：Credentials 1.6.0、Google ID 1.1.1、Play Services Auth 22.0.0。Google ID 1.2.1 實際不相容既有 Kotlin metadata，已回退相容穩定版。

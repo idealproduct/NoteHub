@@ -75,8 +75,10 @@ fun NoteHubApp(model: HubViewModel, openedNoteId: String? = null, consumeOpenedN
                             onBack = { nav.popBackStack() },
                             onEdit = { model.clearError(); nav.navigate("editor/${note.id}/0") },
                             onReminders = { model.clearError(); nav.navigate("reminders/${note.id}") },
-                            onPhotos = { model.clearError(); nav.navigate("gallery/${note.id}") },
-                            onComplete = { model.complete(note.id, it) })
+                            onPhotos = { photoId -> model.clearError(); nav.navigate("gallery/${note.id}?photo=${photoId.orEmpty()}") },
+                            onComplete = { model.complete(note.id, it) },
+                            photos = state.photos.filter { it.noteId == note.id }, photoFiles = model.photoFiles,
+                            onCamera = { nav.navigate("camera/${java.util.UUID.randomUUID()}/${note.id}") })
                     }
                     composable("editor/{id}/{day}") { backStack ->
                         val id = backStack.arguments?.getString("id")?.takeUnless { it == "new" }
@@ -118,7 +120,7 @@ fun NoteHubApp(model: HubViewModel, openedNoteId: String? = null, consumeOpenedN
                             nav.navigate("gallery/$id") { launchSingleTop = true }
                         })
                     }
-                    composable("gallery/{id}") { stack ->
+                    composable("gallery/{id}?photo={photo}", arguments = listOf(androidx.navigation.navArgument("photo") { defaultValue = "" })) { stack ->
                         val id = stack.arguments?.getString("id")
                         val note = state.notes.find { it.id == id }
                         if (state.loading) CircularProgressIndicator()
@@ -128,20 +130,26 @@ fun NoteHubApp(model: HubViewModel, openedNoteId: String? = null, consumeOpenedN
                         } else PhotoGalleryScreen(note, state.photos.filter { it.noteId == id }, state, model,
                             onBack = { nav.popBackStack() },
                             onEdit = { model.clearError(); nav.navigate("editor/${note.id}/0") },
-                            onCamera = { session -> model.clearError(); nav.navigate("camera/$session/${note.id}") })
+                            onCamera = { session -> model.clearError(); nav.navigate("camera/$session/${note.id}") },
+                            initialPhotoId = stack.arguments?.getString("photo")?.takeIf { it.isNotEmpty() },
+                            onReminders = { nav.navigate("reminders/${note.id}") })
                     }
                     composable("import") {
                         val importModel: CalendarImportViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = model.calendarImportFactory)
                         CalendarImportScreen(importModel) { nav.popBackStack() }
                     }
-                    composable("settings") { SettingsScreen(state.theme, model::setTheme, model) { nav.navigate("import") } }
+                    composable("sync") {
+                        val syncModel: CalendarSyncViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = model.calendarSyncFactory)
+                        CalendarSyncScreen(syncModel) { nav.popBackStack() }
+                    }
+                    composable("settings") { SettingsScreen(state.theme, model::setTheme, model, { nav.navigate("import") }, { nav.navigate("sync") }) }
                 }
             }
         }
     }
 }
 @Composable
-private fun SettingsScreen(theme: ThemeMode, setTheme: (ThemeMode) -> Unit, model: HubViewModel, onImport: () -> Unit) {
+private fun SettingsScreen(theme: ThemeMode, setTheme: (ThemeMode) -> Unit, model: HubViewModel, onImport: () -> Unit, onSync: () -> Unit) {
     LazyColumn(Modifier.testTag("settings-content"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("設定", style = MaterialTheme.typography.headlineLarge) }
         item { Text("外觀", style = MaterialTheme.typography.titleLarge) }
@@ -154,11 +162,12 @@ private fun SettingsScreen(theme: ThemeMode, setTheme: (ThemeMode) -> Unit, mode
         item { ReminderPermissions(model.reminderPlatform, model::restoreReminders) }
         item { CameraPermissionSettings() }
         item { Button(onClick = onImport) { Text("Google 行事曆匯入") } }
+        item { Button(onClick = onSync) { Text("Google 雙向定期同步") } }
         item { Text("資料儲存", style = MaterialTheme.typography.titleLarge) }
-        item { Text("記事、照片與設定只保存在此裝置，沒有自有後端或雲端資料庫；解除安裝會刪除資料，目前不提供備份或匯出。") }
-        item { Text("Google 匯入是經您授權的唯讀副本，不會寫回或刪除 Google 事件。已刪除的本機副本可在預覽中手動勾選重新匯入。") }
+        item { Text("記事、照片與設定保存在此裝置，沒有自有後端或雲端資料庫；解除安裝會刪除 App 內資料。照片可逐張匯出至您選擇的位置，匯出副本由您保管；目前不提供整體資料備份。") }
+        item { Text("Google 手動匯入保留唯讀模式。雙向同步需要另行授權並啟用，會將有日期的本機事項寫入選定行事曆；照片檔案與提醒不會上傳。") }
         item { Text("裝置時區：${java.time.ZoneId.systemDefault().id}。指定時間依目前時區顯示，全天事件保留原日期。") }
-        item { Text("NoteHub ${com.nqutaoitfteikc.notehub.BuildConfig.VERSION_NAME}（${com.nqutaoitfteikc.notehub.BuildConfig.VERSION_CODE}） · 本機記事與 Google 行事曆唯讀匯入") }
+        item { Text("NoteHub ${com.nqutaoitfteikc.notehub.BuildConfig.VERSION_NAME}（${com.nqutaoitfteikc.notehub.BuildConfig.VERSION_CODE}） · 本機記事、唯讀匯入與選用雙向同步") }
     }
 }
 

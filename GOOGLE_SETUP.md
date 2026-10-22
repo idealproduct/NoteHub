@@ -1,5 +1,7 @@
 # Google Calendar 唯讀匯入設定與真實驗收
 
+本文件保留手動唯讀匯入的設定與歷史驗收。0.10.0 新增的選用雙向同步另需 `calendar.events` 讀寫授權，設定與真實驗收步驟見 [SYNC_GUIDE.md](SYNC_GUIDE.md)；先前唯讀成功不代表雙向同步已驗證。
+
 ## 本機已完成
 
 - 使用者提供的 Web OAuth client ID 已寫入不納入版本控制的 `local.properties`，由 Gradle 注入 BuildConfig。未建立、要求或儲存 client secret。

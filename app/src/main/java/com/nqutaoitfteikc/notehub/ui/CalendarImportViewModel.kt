@@ -20,7 +20,7 @@ data class CalendarImportState(
     val error: String? = null, val resolution: PendingIntent? = null, val awaitingAuthorization: Boolean = false
 )
 class CalendarImportViewModel(private val identity: GoogleIdentity, private val api: GoogleCalendarApi,
-    private val repository: CalendarImportRepository) : ViewModel() {
+    private val repository: CalendarImportRepository, private val stopSync: suspend () -> Unit = {}) : ViewModel() {
     private val mutable = MutableStateFlow(CalendarImportState())
     val state = mutable.asStateFlow()
     val configured get() = identity.clientId.isNotBlank()
@@ -125,6 +125,7 @@ class CalendarImportViewModel(private val identity: GoogleIdentity, private val 
         // Clear local access even if clearing the provider's account preference fails.
         token = null
         mutable.value = CalendarImportState(busy = true)
+        stopSync()
         identity.signOut()
     }
 }

@@ -40,20 +40,30 @@ fun interface CalendarTransport {
     suspend fun get(path: String, query: Map<String, String>, token: String): JSONObject
 }
 class GoogleCalendarTransport : CalendarTransport {
-    override suspend fun get(path: String, query: Map<String, String>, token: String): JSONObject = withContext(Dispatchers.IO) {
+    override suspend fun get(path: String, query: Map<String, String>, token: String): JSONObject = request("GET", path, query, token)
+    suspend fun request(method: String, path: String, query: Map<String, String>, token: String,
+        body: JSONObject? = null, etag: String? = null): JSONObject = withContext(Dispatchers.IO) {
         require(path.startsWith("/users/me/calendarList") || path.startsWith("/calendars/"))
         val params = query.entries.joinToString("&") { "${encode(it.key)}=${encode(it.value)}" }
         val connection = URL("https://www.googleapis.com/calendar/v3$path?$params").openConnection() as HttpsURLConnection
         try {
-            connection.requestMethod = "GET"
+            connection.requestMethod = method
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 15000
             connection.readTimeout = 20000
             connection.setRequestProperty("Authorization", "Bearer $token")
             connection.setRequestProperty("Accept", "application/json")
+            if (etag != null) connection.setRequestProperty("If-Match", etag)
+            if (body != null) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                val payload = body.toString().toByteArray(Charsets.UTF_8)
+                connection.setFixedLengthStreamingMode(payload.size)
+                connection.outputStream.use { it.write(payload) }
+            }
             currentCoroutineContext().ensureActive()
             val code = connection.responseCode
-            if (code != 200) {
+            if (code !in setOf(200, 201, 204)) {
                 val reason = try {
                     connection.errorStream?.use { input ->
                         val output = java.io.ByteArrayOutputStream()
@@ -71,6 +81,7 @@ class GoogleCalendarTransport : CalendarTransport {
                 catch (error: java.io.IOException) { "ERROR_BODY_READ_FAILED" }
                 throw CalendarApiException(code, CalendarApiErrors.message(code, reason), reason)
             }
+            if (code == 204) return@withContext JSONObject()
             val bytes = connection.inputStream.use { input ->
                 val output = java.io.ByteArrayOutputStream()
                 val buffer = ByteArray(8192)
@@ -112,7 +123,7 @@ class GoogleCalendarApi(private val transport: CalendarTransport = GoogleCalenda
                 val item = items.getJSONObject(i)
                 if (!item.optBoolean("deleted")) {
                     val id = item.getString("id")
-                    result[id] = GoogleCalendar(id, item.optString("summaryOverride").ifBlank { item.optString("summary", "未命名行事曆") }, item.optString("timeZone", "UTC"))
+                    result[id] = GoogleCalendar(id, item.optString("summaryOverride").ifBlank { item.optString("summary", "未命名行事曆") }, item.optString("timeZone", "UTC"), item.optString("accessRole", "reader"))
                 }
             }
         }
@@ -151,7 +162,7 @@ object CalendarEventParser {
         val series = item.optString("recurringEventId")
         // Original occurrence identity survives a move; normal events use their immutable Google event ID.
         val key = if (series.isNotBlank() && original != null) {
-            val whenOriginal = if (original.has("date")) "d:${LocalDate.parse(original.getString("date"))}"
+            val whenOriginal = if (!original.isNull("date")) "d:${LocalDate.parse(original.getString("date"))}"
                 else "t:${instant(original, calendar.zone)}"
             "recurring:$series:$whenOriginal"
         } else "event:$id"
@@ -161,7 +172,7 @@ object CalendarEventParser {
         val warnings = mutableListOf<String>()
         if (title.length > 200 || description.length > 20000 || calendar.title.length > 40) warnings += "文字超過本機欄位限制，將截短"
         val base = NoteDraft(title.take(200), description.take(20000), calendar.title.take(40))
-        val draft = if (start.has("date")) {
+        val draft = if (!start.isNull("date")) {
             base.copy(kind = ScheduleKind.ALL_DAY, startDay = LocalDate.parse(start.getString("date")).toEpochDay(),
                 endDayExclusive = LocalDate.parse(end.getString("date")).toEpochDay())
         } else {
