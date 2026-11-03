@@ -20,6 +20,7 @@ credentials = "1.6.0"
 # 1.2.1 requires Kotlin metadata 2.4; retain the stable API compatible with AGP built-in Kotlin 2.2.
 googleid = "1.1.1"
 googleauth = "22.0.0"
+maplibre = "13.7.1"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -61,3 +62,5 @@ credentials = { module = "androidx.credentials:credentials", version.ref = "cred
 credentials-google = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "credentials" }
 googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleid" }
 googleauth = { module = "com.google.android.gms:play-services-auth", version.ref = "googleauth" }
+
+maplibre = { module = "org.maplibre.gl:android-sdk-opengl", version.ref = "maplibre" }

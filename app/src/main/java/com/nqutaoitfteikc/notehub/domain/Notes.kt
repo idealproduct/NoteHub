@@ -29,14 +29,16 @@ data class NoteDraft(
             ScheduleKind.TODO -> clean.copy(startDay = null, endDayExclusive = null, startMillis = null, endMillis = null, zoneId = null)
             ScheduleKind.ALL_DAY -> {
                 require(startDay != null && endDayExclusive != null && endDayExclusive > startDay) { "結束日期不可早於開始日期" }
-                java.time.LocalDate.ofEpochDay(startDay)
-                java.time.LocalDate.ofEpochDay(endDayExclusive)
+                require(java.time.LocalDate.ofEpochDay(startDay).year in 1..9999 && java.time.LocalDate.ofEpochDay(endDayExclusive).year in 1..9999) { "年份須介於 1 至 9999" }
                 clean.copy(startMillis = null, endMillis = null, zoneId = null)
             }
             ScheduleKind.TIMED -> {
                 require(startMillis != null && endMillis != null && endMillis > startMillis) { "結束時間必須晚於開始時間" }
                 require(zoneId != null) { "請指定事件時區" }
                 java.time.ZoneId.of(zoneId)
+                val zone = java.time.ZoneId.of(zoneId)
+                require(java.time.Instant.ofEpochMilli(startMillis).atZone(zone).year in 1..9999 &&
+                    java.time.Instant.ofEpochMilli(endMillis).atZone(zone).year in 1..9999) { "年份須介於 1 至 9999" }
                 clean.copy(startDay = null, endDayExclusive = null)
             }
         }

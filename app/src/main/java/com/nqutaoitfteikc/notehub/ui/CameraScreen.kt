@@ -40,9 +40,14 @@ import java.time.ZoneId
 
 @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun CameraScreen(sessionId: String, targetNote: Note?, state: HubState, model: HubViewModel, onBack: () -> Unit, onSaved: (String) -> Unit) {
     val context = LocalContext.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
     val owner = LocalLifecycleOwner.current
+    var gpsEnabled by remember { mutableStateOf(false) }
+    val gps = rememberPhotoGps(gpsEnabled)
     val mainExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
     var permission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     var permissionMessage by remember { mutableStateOf<String?>(null) }
@@ -112,13 +117,18 @@ fun CameraScreen(sessionId: String, targetNote: Note?, state: HubState, model: H
         text = { Text("這組尚未儲存的照片將從本機刪除。") },
         confirmButton = { TextButton(enabled = !busy, onClick = { model.discardPhotoDraft(sessionId, onBack) }) { Text("確認捨棄") } },
         dismissButton = { TextButton(onClick = { discard = false }) { Text("保留草稿") } })
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val previewHeight=if(maxHeight<420.dp) (maxHeight*.4f).coerceIn(100.dp,220.dp) else 300.dp
     Column(Modifier.fillMaxSize().imePadding()) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(enabled = !busy, onClick = onBack) { Text("返回並保留照片") }
             Text("拍照記事", style = MaterialTheme.typography.titleLarge)
         }
         LazyColumn(Modifier.weight(1f).testTag("camera-content"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { PhotoGpsControls(gps,gpsEnabled) { gpsEnabled=it } }
+            // Keep the preview attached while any part of its capture controls is visible.
             item {
+                Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 if (!permission) Column {
                     Text("拍照需要相機權限，照片只會存放在此裝置。")
                     Button(onClick = { requestPermission.launch(Manifest.permission.CAMERA) }, modifier = Modifier.testTag("grant-camera")) { Text("允許使用相機") }
@@ -126,13 +136,11 @@ fun CameraScreen(sessionId: String, targetNote: Note?, state: HubState, model: H
                         try { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
                         catch (e: Exception) { Log.e("NoteHubPhotos", "無法開啟權限設定", e); permissionMessage = "無法開啟系統設定，請手動前往 NoteHub 的相機權限" }
                     }) { Text("開啟相機權限設定") }
-                } else AndroidView(factory = { previewView }, modifier = Modifier.fillMaxWidth().height(300.dp).testTag("camera-preview"))
+                } else AndroidView(factory = { previewView }, modifier = Modifier.fillMaxWidth().height(previewHeight).testTag("camera-preview"))
                 permissionMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 bindError?.let { Text(it, color = MaterialTheme.colorScheme.error); TextButton(onClick = { retry++ }) { Text("重新啟動相機") } }
-            }
-            item {
                 Text(if (streaming) "相機預覽就緒" else if (permission) "正在啟動相機…" else "等待相機授權", modifier = Modifier.testTag("camera-status"))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(enabled = permission && capture != null && streaming && !busy, modifier = Modifier.testTag("take-photo"), onClick = {
                         val imageCapture = capture ?: return@Button
                         val token = model.beginCapture(sessionId) ?: return@Button
@@ -140,16 +148,21 @@ fun CameraScreen(sessionId: String, targetNote: Note?, state: HubState, model: H
                         val realtime = sensorRealtime
                         val zone = ZoneId.systemDefault().id
                         var clock: CaptureClock? = null
+                        var location = LocationSnapshot()
                         try {
                             imageCapture.takePicture(model.photoCaptureExecutor, object : ImageCapture.OnImageCapturedCallback() {
-                                override fun onCaptureStarted() { clock = CaptureClock(System.currentTimeMillis(), SystemClock.elapsedRealtimeNanos()) }
+                                override fun onCaptureStarted() {
+                                    val started=CaptureClock(System.currentTimeMillis(), SystemClock.elapsedRealtimeNanos())
+                                    clock=started
+                                    location=if(gpsEnabled) gps.snapshot(started.elapsedNanos) else LocationSnapshot()
+                                }
                                 override fun onCaptureSuccess(image: ImageProxy) {
                                     try {
                                         val at = requireNotNull(clock) { "相機未提供拍攝開始時間" }
                                         require(image.format == ImageFormat.JPEG) { "相機未提供 JPEG 格式" }
                                         val buffer = image.planes[0].buffer.duplicate().apply { rewind() }
                                         val bytes = ByteArray(buffer.remaining()).also { buffer.get(it) }
-                                        val captured = CapturedImage(bytes, CaptureTimeRules.resolve(at, image.imageInfo.timestamp, realtime), image.imageInfo.rotationDegrees, zone)
+                                        val captured = CapturedImage(bytes, CaptureTimeRules.resolve(at, image.imageInfo.timestamp, realtime), image.imageInfo.rotationDegrees, zone, location)
                                         mainExecutor.execute { model.storeCapture(token, sessionId, captured) }
                                     } catch (e: Exception) { mainExecutor.execute { model.failCapture(token, e) } }
                                     finally { image.close() }
@@ -160,6 +173,7 @@ fun CameraScreen(sessionId: String, targetNote: Note?, state: HubState, model: H
                     }) { Text(if (state.capturingSession == sessionId) "拍攝與保存中…" else "拍攝照片") }
                     if (switchAvailable) TextButton(enabled = !busy, onClick = { lens = if (lens == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK }) { Text("切換鏡頭") }
                 }
+            }
             }
             item {
                 Text("已拍 ${photos.size} 張", style = MaterialTheme.typography.titleMedium)
@@ -175,7 +189,11 @@ fun CameraScreen(sessionId: String, targetNote: Note?, state: HubState, model: H
                     error = null
                     try {
                         NoteDraft(title, description, category).validated()
-                        model.savePhotoNote(sessionId, targetNote?.id, title, description, category, onSaved)
+                        model.savePhotoNote(sessionId, targetNote?.id, title, description, category) { id ->
+                            focus.clearFocus(force = true)
+                            keyboard?.hide()
+                            onSaved(id)
+                        }
                     } catch (e: IllegalArgumentException) { error = e.message ?: "請檢查記事內容" }
                 }) { Text(if (state.saving) "儲存中…" else if (targetNote == null) "儲存照片記事" else "加入這篇照片記事") }
                 if (photos.isNotEmpty()) TextButton(enabled = !busy, onClick = { discard = true }) { Text("捨棄這組草稿") }
@@ -185,10 +203,12 @@ fun CameraScreen(sessionId: String, targetNote: Note?, state: HubState, model: H
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         PhotoImage(photo, model.photoFiles, Modifier.fillMaxWidth().height(200.dp))
                         Text("拍攝：${captureLabel(photo.capturedAt)}")
+                        Text(if(photo.location==null) "此照片未紀錄拍攝位置" else photoLocationLabel(photo.location,photo.locationStatus),style=MaterialTheme.typography.bodySmall)
                         TextButton(enabled = !busy, onClick = { model.removePhoto(photo.id) }, modifier = Modifier.testTag("remove-draft-${photo.id}")) { Text("移除此張照片") }
                     }
                 }
             }
         }
     }
+}
 }

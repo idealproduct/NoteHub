@@ -1,6 +1,49 @@
+> 2026-11-01：新 Pixel 9 Pro 25GB 已完成實際容量驗證（總量 24G／可用 23G）、安裝 0.16.0 與 3 項裝置測試；舊 VM 與資料保留。Google 帳戶需在新 VM 重新登入。詳見 VM_STORAGE_GUIDE.md 頂部最新紀錄。
+
+> VM 後續：已依選擇從 IntelliJ 新建 **Pixel 9 Pro 25GB** 並保留舊 VM；虛擬磁碟 25 GiB 已核對，目前等待新 VM 的 USB 偵錯安全授權，安裝／實際可用空間驗收待完成。詳見 VM_STORAGE_GUIDE.md。
+
+> 最新 0.16.0：修正上一版 Android 37 真實啟動的 SQLite PRAGMA 執行錯誤；設定改為四分頁並顯示真實容量。42 JVM、11 裝置測試與三次實際冷啟動通過。VM 在 IntelliJ 已設 25 GB，但現有加密磁碟仍 6 GB，待選擇保留／另建方案，沒有清除原資料，詳見 VM_STORAGE_GUIDE.md。
+
+> 最新 0.15.0：精簡月曆工具列與跨日事件色條、放大成就文字與不同門檻名稱；新增照片／GPS 加密及乾淨副本匯出。拍照定位改為每次主動啟用，照片記事不再同步 Google。地圖依使用者選擇直接載入線上底圖，可切換離線。最新隱私規則見 [PRIVACY.md](PRIVACY.md)，舊版相關描述以此為準。
+
+> 最新 0.14.0：成就改計新建照片記事／本機行事曆事件，新增除錯版達成／重置選單，列表精簡並提供詳細介面；停止成就自動儲存與 SVG 下載，保留 PNG 分享。舊版成就描述以 [ACHIEVEMENTS.md](ACHIEVEMENTS.md) 為準。36 JVM、24 裝置測試通過，詳見 PROJECT_STATUS.md。
+
 # NoteHub
 
-原生 Android 本機記事與行事曆，Kotlin / Jetpack Compose / Material 3。最新版本為 0.10.0，加入照片匯出、詳情頁直接顯示照片、照片提醒入口與選用 Google 雙向定期同步。雙向同步需額外讀寫授權及啟用；真實 Google 雙向驗證結果與其他限制見 PROJECT_STATUS.md。既有唯讀匯入仍可獨立使用。
+原生 Android 本機記事與行事曆，Kotlin / Jetpack Compose / Material 3。最新版本為 0.13.0，新增累積成就進度、拍照 GPS 與 MapLibre 照片地圖（含定位到我）。雙向同步需額外讀寫授權及啟用；真實驗收結果與限制見 PROJECT_STATUS.md。既有唯讀匯入仍可獨立使用。
+
+## 0.13.0 累積次數、拍攝 GPS 與照片地圖
+
+- 成就頁顯示累積次數、下一門檻、尚差次數與進度，保留原有計次與解鎖紀錄。
+- 拍照頁可授權精確 GPS，每張照片保存快門時的座標、定位誤差與時間；未取得可靠定位仍可拍照，會標示未附位置。
+- 新增底部「地圖」：MapLibre Native 13.7.1 OpenGL ES＋OpenFreeMap，無需 Google Maps API key。
+- 原生 GeoJSON 聚合，縮小合併、放大分開；相同位置可分批查看，點選可開啟照片記事。
+- 「定位到我」主動取得目前 GPS 後平滑移動地圖，不新增照片記事；短視窗／大字型使用定位圖示。
+- GPS 不隨 Calendar 同步或新增至照片匯出 EXIF。舊照片不補推測座標，Room 升至 v8 並保留既有資料。
+- 操作、定位規則、效能設計與驗收：[MAP_LOCATION_GUIDE.md](MAP_LOCATION_GUIDE.md)。
+
+## 0.12.0 提醒成就
+
+- 每新增一筆獨立提醒累計一次，編輯／刪除／重開不重複；從本版開始計次。
+- 1、5、10、30、50、100、300、500、1,000……解鎖不同標題與動畫 SVG。
+- 底部「成就」只顯示已達成項目；達成彈窗可選系統分享目的地。
+- PNG 封面自動加入「NoteHub 成就」相簿，動畫 SVG 完整保存至下載／NoteHub 成就；相簿及接收 App 的 SVG 播放能力有差異。
+- Room v7 交易式計次、匯出續處理、失敗重試；原有記事／照片／提醒／同步資料保留。
+- 規則、架構、格式與測試隔離說明：[ACHIEVEMENTS.md](ACHIEVEMENTS.md)。
+
+**測試注意：** 0.12.0 起，在真實 AppContainer 新增提醒的測試也會累計持久成就。整套測試限沒有使用者資料的專用模擬器。現有裝置只跑 `Test-RegressionSafely.py --classes` 允許的隔離測試；不要直接使用下方歷史完整測試指令。
+
+## 0.11.0 相簿批次匯出與字型
+
+- 詳情頁或照片圖庫開啟「批次儲存至相簿」，勾選同篇記事照片或全選，再儲存至 `Pictures/NoteHub`。單張儲存也直接加入系統相簿，不再開啟檔案選擇器。
+- 逐張處理，顯示進度與部分失敗；重複點擊不會同時啟動多組工作。畫面重建不會中斷進行中的匯出，原始檔及拍攝時間不變。
+- Android 10 以上使用 MediaStore 自有媒體寫入，不要求讀取整個相簿；Android 9 需儲存權限。失敗時清除本次未完成的媒體列。
+- 設定提供 80%／100%／115%／130%／150%，在系統字型大小上調整；可一鍵恢復跟隨系統。保留 Android 字型轉換並持久化選擇。
+- 大字型時月曆可左右捲動、時間軸調整欄寬與刻度、日期／時間欄位改為直排、操作列可換行。
+- 詳情照片使用 LazyColumn，限制解碼尺寸及同時解碼數；防止異常年份溢位及無效通知路徑造成崩潰。
+- 無法保證所有裝置或系統情境永不崩潰。程序被系統終止時，批次匯出不會自動續傳；已完成副本保留，尚未完成的 pending 媒體由系統回收。
+
+測試已啟用 Google 同步的裝置時，使用 `scripts/Test-RegressionSafely.py` 隔離測試資料，期間暫停同步並在結束後還原原開關。不要在測試期間手動操作 App。若還原失敗會保留 `dist/.regression-settings-backup.pb`，需先處理再重跑。
 
 ## 0.10.0 照片與雙向同步
 
@@ -64,7 +107,7 @@ $env:JAVA_HOME='C:/Users/USER/.jdks/jdk-21.0.12.101-hotspot'
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ```
 
-可安裝檔案：[dist/NoteHub-0.6.0-debug.apk](dist/NoteHub-0.6.0-debug.apk)，版本 0.6.0／versionCode 6，既有 debug 簽章。SHA-256 見 dist/SHA256SUMS.txt；操作與限制見 [RELEASE_NOTES.md](RELEASE_NOTES.md)。
+可安裝檔案：[dist/NoteHub-0.13.0-debug.apk](dist/NoteHub-0.13.0-debug.apk)，版本 0.13.0／versionCode 13，既有 debug 簽章。SHA-256 見 dist/SHA256SUMS.txt；操作與限制見 [RELEASE_NOTES.md](RELEASE_NOTES.md)。
 
 ## 模擬器測試
 

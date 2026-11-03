@@ -41,6 +41,7 @@ fun NoteHubTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = false,
+    fontScale: Float = 1f,
     content: @Composable () -> Unit
 ) {
     val view = LocalView.current
@@ -67,6 +68,6 @@ fun NoteHubTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
-        content = content
+        content = { AppFontScale(fontScale, content) }
     )
 }

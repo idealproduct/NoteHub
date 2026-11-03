@@ -20,13 +20,13 @@ import org.junit.Test
 
 class PhotoPreviewLayoutTest {
     @get:Rule val compose = createComposeRule()
-    private fun verify(width: Int, height: Int, fontScale: Float = 1f) {
+    private fun verify(width: Int, height: Int, fontScale: Float = 1f, appScale: Float = 1f) {
         var saved = ""
         var closed = false
         compose.setContent {
             val current = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(current.density, fontScale)) {
-                NoteHubTheme {
+                NoteHubTheme(fontScale = appScale) {
                     Surface(Modifier.size(width.dp, height.dp).testTag("test-preview-window")) {
                         var caption by remember { mutableStateOf("") }
                         // This already-sized virtual window represents available content space;
@@ -62,6 +62,7 @@ class PhotoPreviewLayoutTest {
     @Test fun shortAvailableWindowStillAllowsCaptionAndSave() = verify(320, 260)
     @Test fun veryShortKeyboardSpaceUsesSingleActionRow() = verify(320, 140)
     @Test fun largeTextCanScrollEditorWithoutLosingActions() = verify(320, 480, 1.8f)
+    @Test fun combinedSystemAndAppLargeFontsKeepPhotoActionsReachable() = verify(320, 480, 2f, 1.5f)
     @Test fun currentWindowKeepsActionsReachableIncludingLandscape() {
         val configuration = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.resources.configuration
         verify(configuration.screenWidthDp.coerceAtMost(800), configuration.screenHeightDp.coerceAtMost(600))

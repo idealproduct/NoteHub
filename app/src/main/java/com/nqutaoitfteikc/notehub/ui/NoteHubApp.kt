@@ -1,11 +1,14 @@
 package com.nqutaoitfteikc.notehub.ui
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -23,23 +26,42 @@ fun NoteHubApp(model: HubViewModel, openedNoteId: String? = null, consumeOpenedN
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, model) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) { model.restoreReminders(); model.recoverPhotoFiles() }
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) { model.restoreReminders(); model.recoverPhotoFiles(); model.recoverAchievements() }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(Unit) { model.restoreReminders(); model.recoverPhotoFiles() }
+    LaunchedEffect(Unit) { model.restoreReminders(); model.recoverPhotoFiles(); model.recoverAchievements() }
     LaunchedEffect(openedNoteId, state.loading) {
         if (openedNoteId != null && !state.loading) {
-            nav.navigate("details/$openedNoteId") { launchSingleTop = true }
+            if (state.notes.any { it.id == openedNoteId }) nav.navigate("details/${android.net.Uri.encode(openedNoteId)}") { launchSingleTop = true }
+            else model.missingOpenedNote()
             consumeOpenedNote()
         }
     }
     val dark = when (state.theme) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.LIGHT -> false; ThemeMode.DARK -> true }
-    NoteHubTheme(darkTheme = dark) {
+    var selectedAchievement by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
+    val pendingAchievement=state.achievements.filter { !it.announced }.minByOrNull { it.milestone }
+    val shownAchievement=selectedAchievement?.let { id -> state.achievements.find { it.milestone==id } } ?: pendingAchievement
+    val scope=rememberCoroutineScope()
+    val context=androidx.compose.ui.platform.LocalContext.current
+    var sharing by remember { mutableStateOf(false) }
+    NoteHubTheme(darkTheme = dark, fontScale = state.fontScale) {
+        shownAchievement?.let { earned ->
+            AchievementDialog(earned,newlyUnlocked=selectedAchievement==null && !earned.announced,
+                onDismiss={ if(!earned.announced) model.acknowledgeAchievement(earned.milestone); selectedAchievement=null },
+                onShare={ svg ->
+                    if(!sharing) { sharing=true; scope.launch {
+                        try { context.startActivity(model.achievementExporter.shareIntent(earned.milestone,svg)) }
+                        catch(e:kotlinx.coroutines.CancellationException) { throw e }
+                        catch(e:Exception) { model.achievementShareFailed(e) }
+                        finally { sharing=false }
+                    } }
+                })
+        }
         Scaffold(bottomBar = {
             if (entry?.destination?.route?.startsWith("details") != true && entry?.destination?.route?.startsWith("editor") != true && entry?.destination?.route?.startsWith("reminders") != true && entry?.destination?.route?.startsWith("camera") != true && entry?.destination?.route?.startsWith("gallery") != true) NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                listOf("notes" to "記事", "photos" to "照片", "settings" to "設定").forEach { (route, label) ->
+                listOf("notes" to "記事", "photos" to "照片", "map" to "地圖", "achievements" to "成就", "settings" to "設定").forEach { (route, label) ->
                     NavigationBarItem(selected = (entry?.destination?.route ?: "notes") == route,
                         colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                             selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer, selectedTextColor = MaterialTheme.colorScheme.primary),
@@ -52,9 +74,15 @@ fun NoteHubApp(model: HubViewModel, openedNoteId: String? = null, consumeOpenedN
             }
         }) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
+                if (state.exportBusy || state.exportMessage != null) Card(Modifier.fillMaxWidth().padding(8.dp).heightIn(max = 160.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(if (state.exportBusy) "正在儲存至相簿：${state.exportProgress}／${state.exportTotal}" else state.exportMessage.orEmpty(), Modifier.padding(12.dp))
+                    if (!state.exportBusy) TextButton(onClick = model::clearExportMessage) { Text("關閉匯出訊息") }
+                    }
+                }
                 state.error?.let { error ->
                     Card(Modifier.fillMaxWidth().padding(12.dp).testTag("app-error"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                        Column(Modifier.padding(12.dp)) {
+                        Column(Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(12.dp)) {
                             Text(error, color = MaterialTheme.colorScheme.onErrorContainer)
                             TextButton(onClick = model::clearError) { Text("關閉訊息") }
                         }
@@ -78,6 +106,7 @@ fun NoteHubApp(model: HubViewModel, openedNoteId: String? = null, consumeOpenedN
                             onPhotos = { photoId -> model.clearError(); nav.navigate("gallery/${note.id}?photo=${photoId.orEmpty()}") },
                             onComplete = { model.complete(note.id, it) },
                             photos = state.photos.filter { it.noteId == note.id }, photoFiles = model.photoFiles,
+                            exportBusy = state.exportBusy, onExport = model::exportPhotos,
                             onCamera = { nav.navigate("camera/${java.util.UUID.randomUUID()}/${note.id}") })
                     }
                     composable("editor/{id}/{day}") { backStack ->
@@ -142,35 +171,17 @@ fun NoteHubApp(model: HubViewModel, openedNoteId: String? = null, consumeOpenedN
                         val syncModel: CalendarSyncViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = model.calendarSyncFactory)
                         CalendarSyncScreen(syncModel) { nav.popBackStack() }
                     }
-                    composable("settings") { SettingsScreen(state.theme, model::setTheme, model, { nav.navigate("import") }, { nav.navigate("sync") }) }
+                    composable("map") { PhotoMapScreen(state.photoMap) { id,photo ->
+                        nav.navigate("gallery/${android.net.Uri.encode(id)}?photo=${android.net.Uri.encode(photo)}")
+                    } }
+                    composable("achievements") { AchievementsScreen(state.achievements,state.achievementTotal,
+                        onOpen={ selectedAchievement=it.milestone },onTest=model::testAchievement) }
+                    composable("settings") { SettingsScreen(state.theme, model::setTheme, state.fontScale, model::setFontScale, { nav.navigate("import") }, { nav.navigate("sync") }) {
+                        ReminderPermissions(model.reminderPlatform,model::restoreReminders)
+                        CameraPermissionSettings()
+                    } }
                 }
             }
         }
     }
 }
-@Composable
-private fun SettingsScreen(theme: ThemeMode, setTheme: (ThemeMode) -> Unit, model: HubViewModel, onImport: () -> Unit, onSync: () -> Unit) {
-    LazyColumn(Modifier.testTag("settings-content"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("設定", style = MaterialTheme.typography.headlineLarge) }
-        item { Text("外觀", style = MaterialTheme.typography.titleLarge) }
-        items(ThemeMode.entries) { mode ->
-            Row(Modifier.fillMaxWidth().selectable(selected = mode == theme, role = Role.RadioButton, onClick = { setTheme(mode) }).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                RadioButton(selected = mode == theme, onClick = null)
-                Text(when (mode) { ThemeMode.SYSTEM -> "跟隨系統"; ThemeMode.LIGHT -> "淺色"; ThemeMode.DARK -> "深色" })
-            }
-        }
-        item { ReminderPermissions(model.reminderPlatform, model::restoreReminders) }
-        item { CameraPermissionSettings() }
-        item { Button(onClick = onImport) { Text("Google 行事曆匯入") } }
-        item { Button(onClick = onSync) { Text("Google 雙向定期同步") } }
-        item { Text("資料儲存", style = MaterialTheme.typography.titleLarge) }
-        item { Text("記事、照片與設定保存在此裝置，沒有自有後端或雲端資料庫；解除安裝會刪除 App 內資料。照片可逐張匯出至您選擇的位置，匯出副本由您保管；目前不提供整體資料備份。") }
-        item { Text("Google 手動匯入保留唯讀模式。雙向同步需要另行授權並啟用，會將有日期的本機事項寫入選定行事曆；照片檔案與提醒不會上傳。") }
-        item { Text("裝置時區：${java.time.ZoneId.systemDefault().id}。指定時間依目前時區顯示，全天事件保留原日期。") }
-        item { Text("NoteHub ${com.nqutaoitfteikc.notehub.BuildConfig.VERSION_NAME}（${com.nqutaoitfteikc.notehub.BuildConfig.VERSION_CODE}） · 本機記事、唯讀匯入與選用雙向同步") }
-    }
-}
-
-
-
-

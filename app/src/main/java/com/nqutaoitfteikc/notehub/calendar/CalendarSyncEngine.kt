@@ -22,14 +22,16 @@ class CalendarSyncEngine(private val database: NoteDatabase, private val effects
     // Caller holds mutex, including configuration changes and manual conflict resolutions.
     suspend fun run(settings: CalendarSyncSettings, token: String): Int {
         val calendar = settings.calendar
+        val privateIds=database.notes().observe().first().filter { it.photoCapturedAt!=null }.map { it.id }.toSet()
+        val privateEvents=privateIds.map { CalendarSyncProjection.eventId(settings.account,calendar.id,it) }.toSet()
         val links = dao.links(settings.account, calendar.id).associateBy { it.eventId }.toMutableMap()
         val sources = database.calendarImports().forAccount(settings.account).filter { it.calendarId == calendar.id }.associateBy { it.eventId }
         val importedBefore = database.calendarImports().allImportedNoteIds().toSet()
-        val natives = database.notes().observe().first().filter { it.id !in importedBefore && it.kind != ScheduleKind.TODO.name }
+        val natives = database.notes().observe().first().filter { it.id !in importedBefore && it.kind != ScheduleKind.TODO.name && it.photoCapturedAt==null }
             .associateBy { CalendarSyncProjection.eventId(settings.account, calendar.id, it.id) }
         val events = remote.list(calendar, token).associateBy { it.getString("id") }
         for ((id, body) in events) {
-            if (id in links || body.optString("status") == "cancelled") continue
+            if (id in privateEvents || id in links || body.optString("status") == "cancelled") continue
             val source = sources[id]
             val native = natives[id]
             if (source != null || native != null) {
@@ -53,13 +55,14 @@ class CalendarSyncEngine(private val database: NoteDatabase, private val effects
             }
         }
         for (link in links.values) {
+            if(link.noteId in privateIds) continue
             val event = if (events.containsKey(link.eventId)) events[link.eventId]?.takeUnless { it.optString("status") == "cancelled" }
                 else remote.get(calendar.id, link.eventId, token)
             reconcile(settings, token, link, event)
         }
         val importedIds = database.calendarImports().allImportedNoteIds().toSet()
         val linkedIds = links.values.map { it.noteId }.toSet()
-        val locals = database.notes().observe().first().filter { it.id !in importedIds && it.id !in linkedIds && it.kind != ScheduleKind.TODO.name }
+        val locals = database.notes().observe().first().filter { it.id !in importedIds && it.id !in linkedIds && it.kind != ScheduleKind.TODO.name && it.photoCapturedAt==null }
         for (note in locals) {
             val id = CalendarSyncProjection.eventId(settings.account, calendar.id, note.id)
             val body = try { remote.create(calendar.id, id, note.toDomain(), token) }
@@ -126,6 +129,7 @@ class CalendarSyncEngine(private val database: NoteDatabase, private val effects
     suspend fun resolve(settings: CalendarSyncSettings, token: String, eventId: String, useGoogle: Boolean) {
         val link = dao.links(settings.account, settings.calendar.id).single { it.eventId == eventId }
         val note = database.notes().get(link.noteId)
+        require(note?.photoCapturedAt==null) { "照片記事同步已停用，原有雲端副本需於 Google 手動管理" }
         val event = remote.get(settings.calendar.id, eventId, token)
         if (useGoogle) download(settings, link, note, event)
         else if (note == null) {

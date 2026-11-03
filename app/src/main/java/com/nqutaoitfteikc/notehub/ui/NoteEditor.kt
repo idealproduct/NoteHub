@@ -23,6 +23,7 @@ private val dateInputFormat = DateTimeFormatter.ofPattern("uuuu-MM-dd").withReso
 private val timeInputFormat = DateTimeFormatter.ofPattern("HH:mm").withResolverStyle(ResolverStyle.STRICT)
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun NoteEditor(note: Note?, initialDay: Long, saving: Boolean, onBack: () -> Unit,
                onSave: (NoteDraft) -> Unit, onDelete: () -> Unit, categories: List<String>) {
     val zone = remember(note?.id) { ZoneId.of(note?.zoneId ?: ZoneId.systemDefault().id) }
@@ -33,7 +34,7 @@ fun NoteEditor(note: Note?, initialDay: Long, saving: Boolean, onBack: () -> Uni
     var description by rememberSaveable(note?.id) { mutableStateOf(note?.description ?: "") }
     var category by rememberSaveable(note?.id) { mutableStateOf(note?.category ?: "") }
     var kindName by rememberSaveable(note?.id) { mutableStateOf((note?.kind ?: ScheduleKind.TODO).name) }
-    val kind = ScheduleKind.valueOf(kindName)
+    val kind = ScheduleKind.entries.firstOrNull { it.name == kindName } ?: ScheduleKind.TODO
     var startDate by rememberSaveable(note?.id) { mutableStateOf((initialStart?.toLocalDate() ?: note?.startDay?.let(LocalDate::ofEpochDay) ?: date).toString()) }
     var endDate by rememberSaveable(note?.id) { mutableStateOf((initialEnd?.toLocalDate() ?: note?.endDayExclusive?.let { LocalDate.ofEpochDay(it).minusDays(1) } ?: date).toString()) }
     var startTime by rememberSaveable(note?.id) { mutableStateOf(initialStart?.toLocalTime()?.format(timeInputFormat) ?: "09:00") }
@@ -73,7 +74,7 @@ fun NoteEditor(note: Note?, initialDay: Long, saving: Boolean, onBack: () -> Uni
     BoxWithConstraints(Modifier.fillMaxSize().imePadding()) {
     val compact = maxHeight < 360.dp
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(enabled = !saving, onClick = { back() }) { Text("返回") }
             if (!compact) Text(if (note == null) "新增事項" else "編輯事項", modifier = Modifier.weight(1f).padding(12.dp), style = MaterialTheme.typography.titleLarge)
             if (note != null) TextButton(enabled = !saving, onClick = { delete = true }) { Text("刪除") }
@@ -123,10 +124,10 @@ fun ScheduleKind.label() = when (this) { ScheduleKind.TODO -> "無時間待辦";
 @Composable
 internal fun DateInput(label: String, value: String, enabled: Boolean, onChange: (String) -> Unit) {
     val context = pickerContext()
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(value, onChange, label = { Text(label) }, singleLine = true, enabled = enabled, modifier = Modifier.weight(1f).testTag(if (label.startsWith("開始")) "start-date" else "end-date"))
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedTextField(value, onChange, label = { Text(label) }, singleLine = true, enabled = enabled, modifier = Modifier.fillMaxWidth().testTag(if (label.startsWith("開始")) "start-date" else "end-date"))
         TextButton(enabled = enabled, onClick = {
-            val date = runCatching { LocalDate.parse(value, dateInputFormat) }.getOrDefault(LocalDate.now())
+            val date = runCatching { LocalDate.parse(value, dateInputFormat).also { require(it.year in 1..9999) } }.getOrDefault(LocalDate.now())
             DatePickerDialog(context, { _, year, month, day -> onChange(LocalDate.of(year, month + 1, day).toString()) }, date.year, date.monthValue - 1, date.dayOfMonth).apply {
                 setTitle(label)
                 setButton(android.content.DialogInterface.BUTTON_POSITIVE, "確定", this)
@@ -139,8 +140,8 @@ internal fun DateInput(label: String, value: String, enabled: Boolean, onChange:
 @Composable
 internal fun TimeInput(label: String, value: String, enabled: Boolean, onChange: (String) -> Unit) {
     val context = pickerContext()
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(value, onChange, label = { Text(label) }, singleLine = true, enabled = enabled, modifier = Modifier.weight(1f).testTag(if (label.startsWith("開始")) "start-time" else "end-time"))
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedTextField(value, onChange, label = { Text(label) }, singleLine = true, enabled = enabled, modifier = Modifier.fillMaxWidth().testTag(if (label.startsWith("開始")) "start-time" else "end-time"))
         TextButton(enabled = enabled, onClick = {
             val time = runCatching { LocalTime.parse(value, timeInputFormat) }.getOrDefault(LocalTime.of(9, 0))
             TimePickerDialog(context, { _, hour, minute -> onChange(LocalTime.of(hour, minute).format(timeInputFormat)) }, time.hour, time.minute, true).apply {

@@ -13,7 +13,7 @@ class MigrationCoverageTest {
     @Test fun everyHistoricalSchemaMigratesWithExistingDataIntact() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        for (version in 1..5) {
+        for (version in 1..8) {
             val name = "migration-all-$version-${UUID.randomUUID()}.db"
             val schema = JSONObject(instrumentation.context.assets.open("com.nqutaoitfteikc.notehub.data.NoteDatabase/$version.json").bufferedReader().readText()).getJSONObject("database")
             context.openOrCreateDatabase(name, 0, null).use { db ->
@@ -32,17 +32,21 @@ class MigrationCoverageTest {
                 if (version >= 3) db.execSQL("INSERT INTO reminders VALUES('reminder','retained',999999999,'revision',1,NULL,'PENDING')")
                 if (version >= 4) {
                     db.execSQL("UPDATE notes SET photoCapturedAt=1000,endMillis=1001 WHERE id='retained'")
-                    db.execSQL("INSERT INTO photos VALUES('photo','retained','session','photo.jpg',1000,90,'Asia/Taipei','CAPTURE_STARTED','照片描述')")
+                    db.execSQL("INSERT INTO photos(id,noteId,sessionId,fileName,capturedAt,rotationDegrees,zoneId,timeSource,caption) VALUES('photo','retained','session','photo.jpg',1000,90,'Asia/Taipei','CAPTURE_STARTED','照片描述')")
                     db.execSQL("INSERT INTO photo_deletions VALUES('pending.jpg')")
                 }
                 if (version >= 5) db.execSQL("INSERT INTO calendar_imports VALUES('test-account','calendar','instance','event','retained',123)")
+                if (version >= 7) {
+                    db.execSQL("INSERT INTO achievement_progress VALUES(1,42)")
+                    db.execSQL("INSERT INTO achievements VALUES(1,777,1,NULL,NULL,NULL,0)")
+                }
                 db.version = version
             }
             val db = Room.databaseBuilder(context, NoteDatabase::class.java, name).addMigrations(
-                NoteDatabase.MIGRATION_1_2, NoteDatabase.MIGRATION_2_3, NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6).build()
+                NoteDatabase.MIGRATION_1_2, NoteDatabase.MIGRATION_2_3, NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6, NoteDatabase.MIGRATION_6_7, NoteDatabase.MIGRATION_7_8, NoteDatabase.MIGRATION_8_9).build()
             try {
                 val note = requireNotNull(db.notes().get("retained"))
-                assertEquals(6, db.openHelper.readableDatabase.version)
+                assertEquals(9, db.openHelper.readableDatabase.version)
                 assertEquals("升級保留", note.title); assertEquals(123456L, note.createdAt)
                 if (version >= 2) {
                     assertEquals("原描述", note.description); assertEquals("原分類", note.category); assertTrue(note.completed)
@@ -58,6 +62,9 @@ class MigrationCoverageTest {
                     assertEquals("pending.jpg", db.photos().deletions().single().fileName)
                 }
                 assertEquals(if (version >= 5) 1 else 0, db.calendarImports().statuses("test-account").size)
+                if(version>=7) { assertEquals(42L,db.achievements().total()); assertTrue(db.achievements().all().single().announced); assertEquals(777L,db.achievements().all().single().unlockedAt) }
+                else { assertEquals(0L, db.achievements().total()); assertTrue(db.achievements().all().isEmpty()) }
+                if(version>=4) { assertNull(db.photos().all().single().latitude); assertEquals("NOT_RECORDED",db.photos().all().single().locationStatus) }
                 assertTrue(db.calendarSync().links("test-account", "calendar").isEmpty())
                 assertEquals(1, db.notes().update(note.copy(title = "升級後仍可編輯")))
                 assertEquals("升級後仍可編輯", db.notes().get("retained")?.title)

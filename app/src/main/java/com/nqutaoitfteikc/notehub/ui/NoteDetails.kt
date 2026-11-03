@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -18,9 +20,11 @@ import java.time.ZoneId
 internal fun NoteDetails(note: Note, saving: Boolean, reminderCount: Int, onBack: () -> Unit,
     onEdit: () -> Unit, onReminders: () -> Unit, onPhotos: (String?) -> Unit, onComplete: (Boolean) -> Unit,
     photos: List<com.nqutaoitfteikc.notehub.domain.Photo> = emptyList(),
-    photoFiles: com.nqutaoitfteikc.notehub.photos.PhotoFiles? = null, onCamera: () -> Unit = {}) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).testTag("note-details"),
+    photoFiles: com.nqutaoitfteikc.notehub.photos.PhotoFiles? = null, onCamera: () -> Unit = {},
+    exportBusy: Boolean = false, onExport: ((List<String>) -> Unit)? = null) {
+    LazyColumn(Modifier.fillMaxSize().testTag("note-details"), contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item { Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TextButton(onClick = onBack) { Text("返回") }
         Text("事件詳細資訊", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         Text(note.title, style = MaterialTheme.typography.headlineMedium)
@@ -38,22 +42,27 @@ internal fun NoteDetails(note: Note, saving: Boolean, reminderCount: Int, onBack
         Button(enabled = !saving, onClick = onEdit, modifier = Modifier.fillMaxWidth()
             .semantics { contentDescription = "編輯：${note.title}" }) { Text("編輯事件") }
         OutlinedButton(enabled = !saving, onClick = onReminders, modifier = Modifier.fillMaxWidth().testTag("open-reminders-${note.id}")) { Text("管理提醒（$reminderCount 筆）") }
+        } }
         if (note.photoCapturedAt != null && photoFiles != null) {
+            item {
             Text("照片（${photos.size} 張）", style = MaterialTheme.typography.titleMedium)
             if (photos.isEmpty()) Text("這篇記事目前沒有照片，拍攝時間仍保留。")
-            photos.forEach { photo ->
+            if (onExport != null && photos.isNotEmpty()) PhotoBatchExport(photos, exportBusy, onExport)
+            }
+            items(photos, key = { it.id }) { photo ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         PhotoImage(photo, photoFiles, Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 320.dp)
                             .clickable { onPhotos(photo.id) })
                         Text("拍攝：${captureLabel(photo.capturedAt)}")
+                        Text(if(photo.location==null) "此照片未紀錄拍攝位置" else photoLocationLabel(photo.location,photo.locationStatus),style=MaterialTheme.typography.bodySmall)
                         if (photo.caption.isNotEmpty()) Text(photo.caption)
                         TextButton(onClick = { onPhotos(photo.id) }) { Text("預覽與照片說明") }
-                        PhotoExportButton(photo, photoFiles)
+                        if (onExport != null) PhotoExportButton(photo, exportBusy, onExport)
                     }
                 }
             }
-            OutlinedButton(enabled = !saving, onClick = onCamera, modifier = Modifier.fillMaxWidth()) { Text("加入更多照片") }
+            item { OutlinedButton(enabled = !saving, onClick = onCamera, modifier = Modifier.fillMaxWidth()) { Text("加入更多照片") } }
         }
     }
 }

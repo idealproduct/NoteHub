@@ -23,7 +23,9 @@ class ReminderCoordinator(private val database: NoteDatabase, val platform: Remi
         val note = requireNotNull(database.notes().get(noteId)) { "事項已不存在" }
         val reminder = ReminderEntity(old?.id ?: UUID.randomUUID().toString(), noteId, triggerAt,
             UUID.randomUUID().toString(), enabled, null, ReminderStatus.PENDING.name)
-        if (old == null) dao.insert(reminder) else dao.update(reminder)
+        database.withTransaction {
+            if (old == null) dao.insert(reminder) else dao.update(reminder)
+        }
         old?.let { platform.cancelAlarm(it); platform.cancelNotification(it.id) }
         reconcile(reminder, note)
     }

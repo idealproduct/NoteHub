@@ -18,8 +18,8 @@ android {
         applicationId = "com.nqutaoitfteikc.notehub"
         minSdk = 28
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.10.0"
+        versionCode = 16
+        versionName = "0.16.0"
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -62,6 +62,7 @@ dependencies {
     implementation(libs.credentials.google)
     implementation(libs.googleid)
     implementation(libs.googleauth)
+    implementation(libs.maplibre)
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     androidTestImplementation(libs.android.junit)

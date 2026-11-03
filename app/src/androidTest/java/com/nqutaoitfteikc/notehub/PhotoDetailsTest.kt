@@ -29,12 +29,14 @@ class PhotoDetailsTest {
         var reminders = false
         try {
             compose.setContent { Surface(Modifier.fillMaxSize()) {
-                NoteDetails(note, false, 2, {}, {}, { reminders = true }, { opened = it }, {}, listOf(photo), files)
+                NoteDetails(note, false, 2, {}, {}, { reminders = true }, { opened = it }, {}, listOf(photo), files, onExport = {})
             } }
             compose.onNodeWithText("查看照片").assertDoesNotExist()
-            compose.onNodeWithTag("open-reminders-n").performScrollTo().performClick()
+            compose.onNodeWithTag("note-details").performScrollToNode(hasTestTag("open-reminders-n"))
+            compose.onNodeWithTag("open-reminders-n").performClick()
             compose.runOnIdle { assertTrue(reminders) }
-            compose.onNodeWithText("匯出照片").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithTag("note-details").performScrollToNode(hasTestTag("export-photo-$id"))
+            compose.onNodeWithText("儲存至相簿").assertIsDisplayed()
             compose.waitUntil(10000) { compose.onAllNodesWithTag("photo-image-$id").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("photo-image-$id").performScrollTo().performClick()
             compose.runOnIdle { assertEquals(id, opened) }

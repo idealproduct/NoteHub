@@ -15,6 +15,7 @@ interface CalendarSyncRemote {
 
 object CalendarSyncProjection {
     fun body(note: Note): JSONObject {
+        require(note.photoCapturedAt==null) { "照片記事僅存本機，不提供行事曆同步" }
         require(note.kind != ScheduleKind.TODO) { "沒有日期的待辦不支援 Google 行事曆同步" }
         val start = JSONObject(); val end = JSONObject()
         if (note.kind == ScheduleKind.ALL_DAY) {

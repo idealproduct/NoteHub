@@ -26,10 +26,11 @@ class PhotoCaptureUiTest {
     private fun cameraReady() { compose.waitUntil(30000) { compose.onAllNodes(hasTestTag("take-photo") and isEnabled()).fetchSemanticsNodes().isNotEmpty() } }
     private fun captureOne(): Photo {
         compose.onNodeWithTag("camera-content").performScrollToNode(hasTestTag("take-photo"))
+        compose.onNodeWithTag("take-photo").performScrollTo()
         cameraReady()
         val ids = photos().map { it.id }.toSet()
         val before = System.currentTimeMillis()
-        compose.onNodeWithTag("take-photo").performClick()
+        compose.onNodeWithTag("take-photo").assertIsDisplayed().performClick()
         compose.waitUntil(30000) { photos().any { it.id !in ids } }
         val photo = photos().single { it.id !in ids }
         assertTrue(photo.capturedAt in (before - 1000)..System.currentTimeMillis())
@@ -70,8 +71,23 @@ class PhotoCaptureUiTest {
             assertTrue(saveAt > originalTime)
             assertEquals(originalTime, notes().single { it.id == noteId }.createdAt)
             assertEquals(originalTime, notes().single { it.id == noteId }.photoCapturedAt)
+            compose.waitUntil(10000) {
+                androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
+                    ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) != true
+            }
             compose.onNodeWithTag("photo-gallery").performScrollToNode(hasTestTag("preview-photo-${second.id}"))
-            compose.onNodeWithTag("preview-photo-${second.id}").performClick()
+            // A photo card can be taller than the landscape viewport. Scroll to its actual button,
+            // not only to the lazy item containing it, before injecting the real touch.
+            compose.onNodeWithTag("preview-photo-${second.id}").performScrollTo().assertIsDisplayed().performClick()
+            // Gallery navigation can overlap the system IME closing animation on a short window.
+            try { compose.waitUntil(10000) { compose.onNodeWithTag("save-photo-caption").isDisplayed() } }
+            catch (error: androidx.compose.ui.test.ComposeTimeoutException) {
+                val window = compose.activity.window.decorView
+                val insets = androidx.core.view.ViewCompat.getRootWindowInsets(window)
+                val safe = compose.onAllNodesWithTag("photo-preview-safe-area").fetchSemanticsNodes().firstOrNull()?.boundsInRoot
+                val save = compose.onAllNodesWithTag("save-photo-caption").fetchSemanticsNodes().firstOrNull()?.boundsInRoot
+                throw AssertionError("預覽操作列未顯示：safe=$safe save=$save root=${window.width}x${window.height} IME=${insets?.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime())}", error)
+            }
             compose.onNodeWithTag("save-photo-caption").assertIsDisplayed()
             compose.onNodeWithTag("photo-caption").performClick()
             try { compose.waitUntil(10000) {
@@ -100,7 +116,7 @@ class PhotoCaptureUiTest {
             compose.waitUntil(10000) { photos().count { it.noteId == noteId } == 3 }
             assertEquals(originalTime, notes().single { it.id == noteId }.photoCapturedAt)
             compose.onNodeWithTag("photo-gallery").performScrollToNode(hasTestTag("remove-photo-${first.id}"))
-            compose.onNodeWithTag("remove-photo-${first.id}").performClick()
+            compose.onNodeWithTag("remove-photo-${first.id}").performScrollTo().assertIsDisplayed().performClick()
             compose.onNodeWithText("確認移除照片").performClick()
             compose.waitUntil(10000) { photos().none { it.id == first.id } }
             assertEquals(originalTime, notes().single { it.id == noteId }.photoCapturedAt)

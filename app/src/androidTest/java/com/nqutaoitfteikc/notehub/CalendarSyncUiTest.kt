@@ -14,6 +14,7 @@ class CalendarSyncUiTest {
         val app = (compose.activity.application as NoteHubApplication).container
         val before = runBlocking { app.syncSettings.flow.first() }
         compose.onNodeWithText("設定", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("settings-tab-2").performClick()
         compose.onNodeWithTag("settings-content").performScrollToNode(hasText("Google 雙向定期同步"))
         compose.onNodeWithText("Google 雙向定期同步").performClick()
         compose.onNodeWithText("Google 雙向同步").assertIsDisplayed()

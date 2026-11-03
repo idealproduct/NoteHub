@@ -10,6 +10,10 @@ class CalendarDropdownTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
     private fun open(tag: String) {
+        if(tag in listOf("status-dropdown","category-dropdown") && compose.onAllNodesWithTag("search").fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithTag("calendar-content").performScrollToNode(hasTestTag("calendar-tools"))
+            compose.onNodeWithTag("calendar-tools").performClick()
+        }
         compose.onNodeWithTag("calendar-content").performScrollToNode(hasTestTag(tag))
         compose.onNodeWithTag(tag).performClick()
     }

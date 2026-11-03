@@ -166,7 +166,7 @@ class CalendarImportTest {
             db.execSQL("INSERT INTO photos VALUES('photo','v4','session','file.jpg',123,90,'Asia/Taipei','CAPTURE_STARTED','描述')")
             db.version = 4
         }
-        val db = Room.databaseBuilder(context, NoteDatabase::class.java, name).addMigrations(NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6).build()
+        val db = Room.databaseBuilder(context, NoteDatabase::class.java, name).addMigrations(NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6, NoteDatabase.MIGRATION_6_7, NoteDatabase.MIGRATION_7_8, NoteDatabase.MIGRATION_8_9).build()
         try {
             assertEquals(123L, db.notes().get("v4")?.photoCapturedAt)
             assertEquals("描述", db.photos().all().single().caption)

@@ -44,6 +44,13 @@ class GoogleCalendarTransport : CalendarTransport {
     suspend fun request(method: String, path: String, query: Map<String, String>, token: String,
         body: JSONObject? = null, etag: String? = null): JSONObject = withContext(Dispatchers.IO) {
         require(path.startsWith("/users/me/calendarList") || path.startsWith("/calendars/"))
+        require(method in setOf("GET","POST","PATCH","DELETE")) { "不支援的網路操作" }
+        if(body!=null) {
+            require(body.keys().asSequence().all { it in setOf("id","summary","description","start","end") }) { "已阻擋非行事曆欄位傳輸" }
+            listOf("start","end").forEach { key -> body.optJSONObject(key)?.let { time ->
+                require(time.keys().asSequence().all { it in setOf("date","dateTime","timeZone") }) { "已阻擋非時間欄位傳輸" }
+            } }
+        }
         val params = query.entries.joinToString("&") { "${encode(it.key)}=${encode(it.value)}" }
         val connection = URL("https://www.googleapis.com/calendar/v3$path?$params").openConnection() as HttpsURLConnection
         try {

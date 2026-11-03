@@ -40,7 +40,7 @@ fun CalendarSyncScreen(model: CalendarSyncViewModel, onBack: () -> Unit) {
         item {
             TextButton(onClick = onBack) { Text("返回設定") }
             Text("Google 雙向同步", style = MaterialTheme.typography.headlineMedium)
-            Text("同步標題、描述、全天與指定時間。分類、完成狀態、照片檔案及提醒只保存在本機；照片記事只同步文字與拍攝時間。無日期待辦不會上傳。")
+            Text("同步標題、描述、全天與指定時間。分類、完成狀態、照片檔案及提醒只保存在本機；照片記事（含文字、時間與位置）不再同步；舊雲端副本需於 Google 手動管理。無日期待辦不會上傳。")
             Text("Google 新事件讀取範圍為過去 30 天至未來 335 天；已連結事件即使移出範圍也會持續更新。本機有日期且未從其他行事曆匯入的事項會上傳至您選定的一個可寫入行事曆。")
         }
         item {
@@ -94,7 +94,7 @@ fun CalendarSyncScreen(model: CalendarSyncViewModel, onBack: () -> Unit) {
         }
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("啟用雙向同步？") },
-        text = { Text("本機有日期的原生事項（含照片記事文字與拍攝時間）將上傳至選定行事曆，Google 事件也會存入本機。後續單邊修改會自動更新另一邊。照片不會上傳；刪除與衝突需要另行確認。變更帳號或行事曆會建立新的同步連結，原有副本保留。") },
+        text = { Text("本機有日期的原生事項（排除照片記事）將上傳至選定行事曆，Google 事件也會存入本機。後續單邊修改會自動更新另一邊。照片不會上傳；刪除與衝突需要另行確認。變更帳號或行事曆會建立新的同步連結，原有副本保留。") },
         confirmButton = { TextButton(onClick = { confirm = false; model.enable() }) { Text("同意並啟用") } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text("取消") } })
     resolution?.let { choice -> AlertDialog(onDismissRequest = { resolution = null }, title = { Text("確認採用${if (choice.second) " Google " else "本機"}狀態？") },

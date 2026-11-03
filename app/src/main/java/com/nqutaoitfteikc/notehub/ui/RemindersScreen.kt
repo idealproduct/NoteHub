@@ -68,6 +68,7 @@ fun ReminderPermissions(platform: ReminderPlatform, restore: () -> Unit) {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun RemindersScreen(note: Note, reminders: List<Reminder>, model: HubViewModel, onBack: () -> Unit) {
     val zone = ZoneId.systemDefault()
     val initial = remember { ZonedDateTime.now(zone).plusHours(1) }
@@ -83,7 +84,7 @@ fun RemindersScreen(note: Note, reminders: List<Reminder>, model: HubViewModel, 
         confirmButton = { TextButton(enabled = !saving, onClick = { model.deleteReminder(requireNotNull(pendingDelete)); pendingDelete = null }) { Text("確認移除") } },
         dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } })
     Column(Modifier.fillMaxSize().imePadding()) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onBack, enabled = !saving) { Text("返回") }
             Text("事項提醒", style = MaterialTheme.typography.titleLarge)
         }
@@ -124,7 +125,7 @@ fun RemindersScreen(note: Note, reminders: List<Reminder>, model: HubViewModel, 
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(Instant.ofEpochMilli(reminder.triggerAt).atZone(zone).format(DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")))
                         Text(reminder.status.label())
-                        Row {
+                        FlowRow {
                             TextButton(enabled = !saving, modifier = Modifier.testTag("edit-reminder-${reminder.id}"), onClick = {
                                 editing = reminder.id
                                 val value = Instant.ofEpochMilli(reminder.triggerAt).atZone(zone)

@@ -11,5 +11,6 @@ local.properties
 .phase5-backup-*/
 .phase6-baseline.zip
 dist/
+__pycache__/
 
 .phase8-baseline.zip

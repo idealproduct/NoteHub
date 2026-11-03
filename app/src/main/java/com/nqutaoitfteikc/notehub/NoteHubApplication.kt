@@ -10,8 +10,20 @@ import com.nqutaoitfteikc.notehub.photos.*
 import java.io.File
 private val Context.settingsStore by preferencesDataStore(name = "settings")
 class AppContainer(private val context: Context) {
-    private val database = Room.databaseBuilder(context, NoteDatabase::class.java, "notehub.db").addMigrations(NoteDatabase.MIGRATION_1_2, NoteDatabase.MIGRATION_2_3, NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6).build()
-    private val notes = RoomNoteRepository(database.notes())
+    private val database = NoteDatabase.open(context)
+    private val achievementRepository = RoomAchievementRepository(database.achievements())
+    val observeAchievements = ObserveAchievements(achievementRepository)
+    val observeAchievementTotal = ObserveAchievementTotal(achievementRepository)
+    val acknowledgeAchievement = AcknowledgeAchievement(achievementRepository)
+    val achievementExporter = com.nqutaoitfteikc.notehub.achievements.AchievementExporter(context, database.achievements())
+    fun exportAchievements() = androidx.work.WorkManager.getInstance(context).cancelUniqueWork("achievement-export")
+    suspend fun testAchievement(milestone: Long, reset: Boolean) {
+        check(BuildConfig.DEBUG)
+        require(com.nqutaoitfteikc.notehub.achievements.MilestonePolicy(listOf(1,3,5)).contains(milestone))
+        if(reset) database.achievements().reset(milestone)
+        else database.achievements().unlock(AchievementEntity(milestone,System.currentTimeMillis()))
+    }
+    private val notes = RoomNoteRepository(database.notes(),database)
     private val settings = LocalSettingsRepository(context.settingsStore)
     val observeNotes = ObserveNotes(notes)
     val addNote = AddNote(notes)
@@ -23,7 +35,9 @@ class AppContainer(private val context: Context) {
     val deleteReminder = DeleteReminder(reminders)
     val restoreReminders = RestoreReminders(reminders)
     val photoCaptureExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
-    val photos = RoomPhotoRepository(database, PhotoFiles(File(context.filesDir, "photos"))) { PhotoCleanupWorker.enqueue(context) }
+    private val photoVault=com.nqutaoitfteikc.notehub.privacy.LocalVault()
+    val photos = RoomPhotoRepository(database, PhotoFiles(File(context.filesDir, "photos"),photoVault),photoVault) { PhotoCleanupWorker.enqueue(context) }
+    val photoExporter = PhotoExporter(context, photos.files)
     private val noteEffects = object : NoteEffects {
         override suspend fun change(noteId: String, action: suspend () -> Unit) = reminders.change(noteId, action)
         override suspend fun delete(noteId: String, action: suspend () -> Unit) = reminders.delete(noteId) { photos.deleteNoteInTransaction(noteId, action) }
@@ -35,6 +49,7 @@ class AppContainer(private val context: Context) {
     fun syncCalendarNow() = com.nqutaoitfteikc.notehub.calendar.CalendarSyncWorker.now(context)
     fun cancelCalendarSync() = com.nqutaoitfteikc.notehub.calendar.CalendarSyncWorker.cancel(context)
     fun schedulePhotoCleanup() = PhotoCleanupWorker.enqueue(context)
+    val observePhotoMap = ObservePhotoMap(photos, notes)
     val observePhotos = ObservePhotos(photos)
     val storePhoto = StorePhoto(photos)
     val savePhotoNote = SavePhotoNote(photos, reminders)
@@ -46,6 +61,8 @@ class AppContainer(private val context: Context) {
     val setCompleted = SetCompleted(notes, noteEffects)
     val observeTheme = ObserveTheme(settings)
     val setTheme = SetTheme(settings)
+    val observeFontScale get() = settings.fontScale
+    suspend fun setFontScale(scale: Float) = settings.setFontScale(scale)
 }
 class NoteHubApplication : Application() {
     val container by lazy { AppContainer(applicationContext) }

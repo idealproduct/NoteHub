@@ -41,13 +41,14 @@ private val clockTime = DateTimeFormatter.ofPattern("HH:mm", Locale.TAIWAN)
 @Composable
 fun CalendarScreen(state: HubState, onAdd: (Long) -> Unit, onOpen: (String) -> Unit, onComplete: (String, Boolean) -> Unit) {
     var viewName by rememberSaveable { mutableStateOf(CalendarView.MONTH.name) }
-    val view = CalendarView.valueOf(viewName)
+    val view = CalendarView.entries.firstOrNull { it.name == viewName } ?: CalendarView.MONTH
     BackHandler(enabled = view == CalendarView.DAY) { viewName = CalendarView.MONTH.name }
     var selectedDay by rememberSaveable { mutableLongStateOf(LocalDate.now().toEpochDay()) }
     val date = LocalDate.ofEpochDay(selectedDay)
+    var toolsOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var scopeName by rememberSaveable { mutableStateOf(SearchScope.ALL.name) }
-    val scope = SearchScope.valueOf(scopeName)
+    val scope = SearchScope.entries.firstOrNull { it.name == scopeName } ?: SearchScope.ALL
     var category by rememberSaveable { mutableStateOf<String?>(null) }
     var completionName by rememberSaveable { mutableStateOf(CompletionFilter.ALL.name) }
     var zone by remember { mutableStateOf(ZoneId.systemDefault()) }
@@ -59,7 +60,7 @@ fun CalendarScreen(state: HubState, onAdd: (Long) -> Unit, onOpen: (String) -> U
     }
     val context = pickerContext()
     val filtered = remember(state.notes, query, category, completionName) {
-        CalendarRules.filter(state.notes, query, category, CompletionFilter.valueOf(completionName))
+        CalendarRules.filter(state.notes, query, category, CompletionFilter.entries.firstOrNull { it.name == completionName } ?: CompletionFilter.ALL)
     }
     val categories = remember(state.notes, category) { (state.notes.map { it.category } + listOfNotNull(category)).distinct().sorted() }
     val searched = filtered.filter { TimelineRules.inScope(it, date, scope, zone) }
@@ -80,16 +81,18 @@ fun CalendarScreen(state: HubState, onAdd: (Long) -> Unit, onOpen: (String) -> U
             else -> date.plusDays(direction)
         }.toEpochDay()
     }
-    LazyColumn(Modifier.fillMaxSize().testTag("calendar-content"), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize().testTag("calendar-content"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text("NOTEHUB", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    Text("我的行事曆", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                Text("行事曆",Modifier.padding(vertical=10.dp),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+                CalendarDropdown("顯示",viewLabel(view),"view-dropdown",Modifier.widthIn(min=72.dp,max=120.dp)) { close ->
+                    CalendarView.entries.forEach { value -> DropdownMenuItem(modifier=Modifier.testTag("view-${value.name}"),text={Text(viewLabel(value))},onClick={viewName=value.name;close()}) }
                 }
-                Button(enabled = !state.loading && !state.saving, onClick = { onAdd(selectedDay) }, modifier = Modifier.testTag("add-note")) { Text("新增事項") }
+                TextButton(onClick={toolsOpen=!toolsOpen},modifier=Modifier.testTag("calendar-tools")) { Text(if(toolsOpen) "收合" else "搜尋／篩選") }
+                IconButton(enabled=!state.loading && !state.saving,onClick={onAdd(selectedDay)},modifier=Modifier.testTag("add-note").semantics { contentDescription="新增事項" }) { Text("＋",style=MaterialTheme.typography.headlineSmall) }
             }
         }
+        if(toolsOpen) {
         item {
             OutlinedTextField(query, { query = it }, label = { Text("搜尋標題、描述或分類") }, singleLine = true,
                 shape = RoundedCornerShape(18.dp),
@@ -98,7 +101,7 @@ fun CalendarScreen(state: HubState, onAdd: (Long) -> Unit, onOpen: (String) -> U
         item {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
             val compact = maxWidth < 340.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f
-            val controlWidth = if (compact) maxWidth else (maxWidth - 16.dp) / 3
+            val controlWidth = if (compact) maxWidth else (maxWidth - 8.dp) / 2
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CalendarDropdown("分類", category?.ifEmpty { "未分類" } ?: "全部分類", "category-dropdown", Modifier.width(controlWidth)) { close ->
                     DropdownMenuItem(text = { Text("全部分類") }, onClick = { category = null; close() })
@@ -106,17 +109,12 @@ fun CalendarScreen(state: HubState, onAdd: (Long) -> Unit, onOpen: (String) -> U
                         DropdownMenuItem(text = { Text(value.ifEmpty { "未分類" }) }, onClick = { category = value; close() })
                     }
                 }
-                CalendarDropdown("狀態", completionLabel(CompletionFilter.valueOf(completionName)), "status-dropdown", Modifier.width(controlWidth)) { close ->
+                CalendarDropdown("狀態", completionLabel(CompletionFilter.entries.firstOrNull { it.name == completionName } ?: CompletionFilter.ALL), "status-dropdown", Modifier.width(controlWidth)) { close ->
                     CompletionFilter.entries.forEach { value ->
                         DropdownMenuItem(text = { Text(completionLabel(value)) }, onClick = { completionName = value.name; close() })
                     }
                 }
-                CalendarDropdown("顯示方式", viewLabel(view), "view-dropdown", Modifier.width(controlWidth)) { close ->
-                    CalendarView.entries.forEach { value ->
-                        DropdownMenuItem(modifier = Modifier.testTag("view-${value.name}"), text = { Text(viewLabel(value)) },
-                            onClick = { viewName = value.name; close() })
-                    }
-                }
+
             }
         }
         }
@@ -128,6 +126,8 @@ fun CalendarScreen(state: HubState, onAdd: (Long) -> Unit, onOpen: (String) -> U
             if (scope != SearchScope.ALL) Text("以 ${when (scope) { SearchScope.DAY -> date.toString(); SearchScope.MONTH -> "${date.year} 年 ${date.monthValue} 月"; else -> "${date.year} 年" }} 搜尋；無日期待辦請選全部",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        }
+        if(!toolsOpen && (query.isNotBlank() || category!=null || completionName!=CompletionFilter.ALL.name)) item { TextButton(onClick={toolsOpen=true}) { Text("篩選已套用 · 點此調整") } }
         if (state.loading) item { CircularProgressIndicator() }
         else {
             if (view != CalendarView.LIST || (showingSearch && scope != SearchScope.ALL)) item {
@@ -144,7 +144,7 @@ fun CalendarScreen(state: HubState, onAdd: (Long) -> Unit, onOpen: (String) -> U
                     TextButton(onClick = { selectedDay = LocalDate.now().toEpochDay() }) { Text("今天") }
                 }
             }
-            item { Text(if (view == CalendarView.LIST) "所有日期 · 共 ${filtered.size} 筆" else "${zone.id} · 搜尋與篩選已套用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if(view==CalendarView.LIST || showingSearch) item { Text(if (view == CalendarView.LIST) "所有日期 · 共 ${filtered.size} 筆" else "${zone.id} · 搜尋與篩選已套用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (showingSearch) {
                 item { Text("搜尋結果 · ${searched.size} 筆", style = MaterialTheme.typography.titleLarge) }
                 val results = searched.filter { it.kind != ScheduleKind.TODO }.sortedWith(compareBy<Note> { it.startMillis ?: LocalDate.ofEpochDay(requireNotNull(it.startDay)).atStartOfDay(zone).toInstant().toEpochMilli() }.thenBy { it.title })
@@ -205,33 +205,54 @@ fun CalendarScreen(state: HubState, onAdd: (Long) -> Unit, onOpen: (String) -> U
 }
 
 @Composable
-private fun MonthGrid(date: LocalDate, notes: List<Note>, zone: ZoneId, select: (LocalDate) -> Unit) {
-    val first = date.withDayOfMonth(1)
-    val start = CalendarRules.weekStart(first)
-    val cells = ((first.dayOfWeek.value - 1 + first.lengthOfMonth() + 6) / 7) * 7
-    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
-    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("${date.year} 年 ${date.monthValue} 月", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
-        Row { listOf("一", "二", "三", "四", "五", "六", "日").forEach { Text(it, modifier = Modifier.weight(1f).padding(vertical = 8.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-        repeat(cells / 7) { week ->
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                repeat(7) { weekday ->
-                    val day = start.plusDays((week * 7 + weekday).toLong())
-                    val count = notes.count { CalendarRules.occursOn(it, day, zone) }
-                    Surface(color = if (day == date) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                        modifier = Modifier.weight(1f).heightIn(min = 54.dp).testTag("day-$day")
-                            .semantics { contentDescription = "$day，$count 筆事項" }.clickable { select(day) }, shape = MaterialTheme.shapes.small) {
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(day.dayOfMonth.toString(), color = when { day == LocalDate.now() -> MaterialTheme.colorScheme.primary; day.month != date.month -> MaterialTheme.colorScheme.outline; else -> MaterialTheme.colorScheme.onSurface }, fontWeight = if (day == date || day == LocalDate.now()) FontWeight.Bold else FontWeight.Normal)
-                            if (count > 0) Text("$count 筆", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+internal fun MonthGrid(date: LocalDate, notes: List<Note>, zone: ZoneId, select: (LocalDate) -> Unit) {
+    val first=date.withDayOfMonth(1); val start=CalendarRules.weekStart(first)
+    val cells=((first.dayOfWeek.value-1+first.lengthOfMonth()+6)/7)*7
+    val weeks=remember(date,notes,zone) { (0 until cells/7).map { MonthAgenda.week(start.plusDays(it*7L),notes,zone) } }
+    val scale=androidx.compose.ui.platform.LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth().testTag("month-grid")) {
+        val width=maxOf(maxWidth,(7*maxOf(44f,44f*scale)).dp)
+        Column(Modifier.horizontalScroll(rememberScrollState()).width(width)) {
+            Row { listOf("一","二","三","四","五","六","日").forEach { Text(it,Modifier.weight(1f).padding(vertical=6.dp),textAlign=TextAlign.Center,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant) } }
+            weeks.forEachIndexed { week,bars ->
+                val weekStart=start.plusDays(week*7L)
+                val visibleLanes=minOf(3,(bars.maxOfOrNull { it.lane } ?: -1)+1)
+                Column(Modifier.fillMaxWidth()) {
+                    HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=.5f))
+                    Row {
+                        repeat(7) { i ->
+                            val day=weekStart.plusDays(i.toLong()); val count=bars.count { i in it.start until it.endExclusive }
+                            Surface(color=if(day==date) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                shape=RoundedCornerShape(8.dp),modifier=Modifier.weight(1f).heightIn(min=44.dp).testTag("day-$day").semantics { contentDescription="$day，$count 筆事項" }.clickable { select(day) }) {
+                                Text(day.dayOfMonth.toString(),Modifier.padding(vertical=10.dp),textAlign=TextAlign.Center,fontWeight=if(day==date || day==LocalDate.now()) FontWeight.Bold else FontWeight.Normal,
+                                    color=if(day.month!=date.month) MaterialTheme.colorScheme.outline else if(day==LocalDate.now()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                    }
+                    repeat(visibleLanes) { lane ->
+                        Box(Modifier.fillMaxWidth().heightIn(min=(24f*scale.coerceAtLeast(1f)).dp).padding(vertical=1.dp)) {
+                            bars.filter { it.lane==lane }.forEach { bar ->
+                                val cell=width/7
+                                val color=if(bar.note.kind==ScheduleKind.ALL_DAY) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer
+                                Surface(color=color,shape=RoundedCornerShape(topStart=if(bar.continuesBefore) 0.dp else 6.dp,bottomStart=if(bar.continuesBefore) 0.dp else 6.dp,topEnd=if(bar.continuesAfter) 0.dp else 6.dp,bottomEnd=if(bar.continuesAfter) 0.dp else 6.dp),
+                                    modifier=Modifier.offset(x=cell*bar.start).width(cell*(bar.endExclusive-bar.start)-1.dp).testTag("month-event-${bar.note.id}-$week").clickable { select(weekStart.plusDays(bar.start.toLong())) }
+                                        .semantics { contentDescription="${bar.note.title}，${scheduleLabel(bar.note,zone)}，點擊查看當日" }) {
+                                    Text((if(bar.continuesBefore) "‹ " else "")+bar.note.title+(if(bar.continuesAfter) " ›" else ""),Modifier.padding(horizontal=4.dp,vertical=2.dp),style=MaterialTheme.typography.labelMedium,maxLines=1,overflow=TextOverflow.Ellipsis,
+                                        textDecoration=if(bar.note.completed) TextDecoration.LineThrough else null)
+                                }
+                            }
+                        }
+                    }
+                    Row {
+                        repeat(7) { i ->
+                            val hidden=bars.count { it.lane>=3 && i in it.start until it.endExclusive }
+                            Text(if(hidden>0) "+$hidden" else "",Modifier.weight(1f).heightIn(min=20.dp).clickable(enabled=hidden>0) { select(weekStart.plusDays(i.toLong())) },textAlign=TextAlign.Center,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
             }
         }
     }
-}
-
 }
 
 private fun LazyListScope.noteCards(notes: List<Note>, prefix: String, saving: Boolean, zone: ZoneId, open: (String) -> Unit, complete: (String, Boolean) -> Unit) {
@@ -297,13 +318,9 @@ private fun CalendarDropdown(label: String, value: String, tag: String, modifier
             .semantics { contentDescription = "$label：$value，開啟選單" },
             color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(16.dp),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(value, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelLarge)
-                    Text("⌄", color = MaterialTheme.colorScheme.primary)
-                }
+            Row(Modifier.padding(horizontal=10.dp,vertical=8.dp).heightIn(min=32.dp),verticalAlignment=Alignment.CenterVertically) {
+                Text(value,Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyMedium)
+                Text("⌄",color=MaterialTheme.colorScheme.primary)
             }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false },

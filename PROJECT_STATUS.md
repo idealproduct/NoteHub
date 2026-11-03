@@ -1,8 +1,241 @@
+## 新 25 GB VM 驗收完成（2026-11-01）
+
+- 使用者完成 USB 偵錯授權後，已確認 AVD 為 Pixel_9_Pro_25GB（emulator-5556）。原 Pixel_9_Pro（emulator-5554）保留，沒有刪除、清除或搬移其資料。
+- Android 實際 df：/data 總容量 24G、已用 1.6G、可用 23G、使用率 7%；25 GiB 虛擬磁碟扣除檔案系統空間後的正常顯示，已不只是設定數字。
+- 已安裝 dist/NoteHub-0.16.0-debug.apk 與對應測試 APK，兩者均 Success。沒有修改 App 原始碼或重建 APK。
+- 新 VM 無 Google 帳戶、同步預設關閉，因此直接執行限定 instrumentation：DatabaseStartupTest、StartupSettingsTest、SettingsTabsUiTest；OK (3 tests)，6.555 秒。包含正式資料庫重開、實際 App 啟動／所有資料讀取、四分頁／選擇保存、300% 大字型短螢幕操作。
+- 再次 force-stop／am start -W：COLD、Status ok、941 ms、PID 10934。本次 PID logcat 未找到 FATAL EXCEPTION、SQLiteException、SQLiteFullException、ENOSPC 或原 PRAGMA 錯誤。
+- 證據：dist/feature16-new25gb-device.log、feature16-new25gb-storage.log、feature16-new25gb-startup.log。先前等待授權與容量待驗證敘述屬歷史紀錄，以本節為準。
+- App 已保持開啟。舊記事與照片仍只在舊 VM，沒有宣稱遷移成功；新 VM 的 Google 登入／授權須由使用者自行完成，本輪沒有測試其 Google 同步。
+
+---
+
+# VM 後續：新 25 GB 裝置已建立，等待 USB 偵錯授權（2026-11-01）
+
+- 使用者選擇另建 25 GB、保留舊 VM。已全程從 IntelliJ Add Device 建立 Pixel 9 Pro 25GB／API 37.2，原 Pixel 9 Pro 與資料未刪除。
+- 新 qcow2 虛擬容量 26,843,545,600 bytes（25 GiB），舊仍 6,442,450,944 bytes；已唯讀核對，dist/vm16-created-proof.json。
+- 新 emulator-5556 已開機但 ADB unauthorized，畫面正等待 Allow USB debugging；已請使用者親自授權，未代按安全權限或繞過。
+- 待授權後：安裝既有 NoteHub 0.16.0 APK、驗證 Android df、App 啟動與設定容量顯示。尚未把虛擬容量證據冒充實際可用空間驗收。
+- 目前沒有改動 App 原始碼或重建 APK；0.16.0 的既有測試／SHA-256 保持不變。Google 尚未登入，原資料仍在舊 VM。
+
+---
+
+# 0.16.0 啟動修正、設定分頁與 VM 容量（2026-11-01）
+
+## 完成與未完成
+
+- 完成啟動根因修正：0.15 AppContainer 的 secure_delete PRAGMA 以 execSQL 執行，Android 37 SQLite 回報「Queries can be performed using SQLiteDatabase query or rawQuery methods only」，使所有 Room 讀取與恢復連帶失敗。已改 query、讀取並確認結果為 1；沒有捕捉後忽略例外或隱藏錯誤。
+- 將正式開啟／Migration／安全 Callback 集中為 NoteDatabase.open，AppContainer 與回歸測試共用，避免先前僅測隔離 Room builder 而漏掉實際啟動路徑。原資料表與 schema 9 不變，沒有清除資料。
+- 設定新增四個可捲動標籤頁：外觀、權限、Google、資料；保存頁面選擇，保留字型、主題、權限入口、匯入、同步、版本與隱私說明。「資料」新增真實 StatFs 容量與低空間提示。
+- IntelliJ Device Manager 已設 Internal storage=25 GB 並冷啟動；但既有加密 qcow2 實際仍 6.0 GB，Android /data 仍 5.8G／可用 0.9G，故容量擴大尚未完成。已詢問另建 25 GB VM 並保留舊 VM，或暫不重建；待答覆，未擅自 Wipe Data／刪除／格式化。詳見 VM_STORAGE_GUIDE.md。
+- 本機完整 AVD 備份於 dist/vm16-before-resize（含帳戶／磁碟／金鑰／快照；Git 已忽略，不上傳）。原始設定曾為 50G，但實際只有 6G；設定數字與實際磁碟已分開核對。
+
+## 命令與驗證
+
+```powershell
+$env:JAVA_HOME='C:/Users/USER/.jdks/jdk-21.0.12.101-hotspot'
+./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain
+./gradlew.bat :app:assembleDebugAndroidTest :app:lintDebug --console=plain
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5554 shell df -h /data
+qemu-img info dist/vm16-before-resize/userdata-qemu.img.qcow2
+```
+
+- feature16-build.log：BUILD SUCCESSFUL，42 JVM／0 failures／0 errors；lint 0 errors／68 warnings。
+- feature16-settings-build.log：新增大字型測試後，測試 APK 與 lint 再通過。
+- feature16-device-before-resize.log：OK (10 tests)，16.37 秒。DatabaseStartupTest 正式開啟磁碟 DB／Callback／重開、StartupSettingsTest 真實 AppContainer 所有資料來源與四頁／重建狀態、SettingsQualityTest 3 項、PrivacyStorageTest 3 項、CalendarImportUiTest／CalendarSyncUiTest 各 1 項。同步由安全腳本暫停／還原；主題測試亦還原原值，未新增使用者記事或成就。
+- feature16-font-device.log：OK (1 test)，3.269 秒；320×360 dp／合併 300% 字型，Google 入口及資料／外觀頁可捲動與點選。
+- startup16-before.log：保存修正前的 Room 連鎖錯誤證據；未發現 SQLiteFull／ENOSPC 為主因。
+- startup16-cold-1.log 至 cold-3.log：三次實際 force-stop／am start 冷啟動，分別 PID 7310／7454／7620，皆 Status: ok，對應新 PID 的 NoteHub／NoteHubPhotos／AndroidRuntime／SQLiteLog 錯誤行 0，UI dump 沒有「無法讀取」或錯誤關閉提示。證據 dist/feature16-startup-proof.json。
+- 所有驗證仍在原 6 GB VM（5.8G 檔案系統，可用 0.9G）完成，已證明啟動修正不依賴擴充容量。不是「完全無錯誤／不會崩潰」的保證。
+
+## 修改／交付
+
+新增 SettingsScreen.kt、DatabaseStartupTest.kt、StartupSettingsTest.kt、SettingsTabsUiTest.kt、VM_STORAGE_GUIDE.md；修改 NoteDatabase.kt、NoteHubApplication.kt、NoteHubApp.kt、現有設定／匯入／同步 UI 測試、安全腳本、版本與專案文件。保留所有既有未提交修改，沒有重建專案或提交 Git。
+
+APK：dist/NoteHub-0.16.0-debug.apk，versionCode 16，81,591,140 bytes，SHA-256 `B79571F699382E1ABABF068BA717FE321E4B432C62D1C71EE63C3C7268D0A3C6`。已保留資料安裝原 Pixel 9 Pro／API 37 VM。簽章需與原 debug 身分一致。
+
+待辦：收到 VM 選擇後完成實際 25 GB 的配置／驗收；實體手機／API 28／正式簽署 release 尚未驗證。本輪沒有測 Google 實際寫入，也未改定位或網路隱私規則。
+
+---
+
+# 0.15.0 月曆、成就與照片隱私（2026-11-01）
+
+## 實作結果
+
+- 已讀取使用者 HEIC 月曆參考圖（以本機 heif-convert 轉換檢視）及現況 PNG。ChatGPT 分享頁無法讀取，改依使用者貼上的「防止拍到敏感資訊」內容實作，未聲稱讀到其他聊天全文。
+- 月曆：精簡工具列、搜尋／篩選預設收合、保留四種檢視；事件以色條顯示，跨週／跨日延續標記、重疊分列、超過三列提供額外數量，點選日期／色條進日檢視。保留全天／半開日期邊界與日程細節。
+- 成就：長條列表標題與日期放大，SVG／PNG 主要文字放大；所有可達門檻的中文名稱不重複，500「銀河典藏」、1,000「千帆啟航」、3,000「千帆織夢」等。沒有改變 v0.14 計次規則或自動儲存狀態。
+- 定位：每次進拍照頁預設關閉，主動開啟後只使用前景 GPS_PROVIDER 新樣本；精確權限、15 秒內、回報誤差≤50 公尺才附位置，快門回呼取樣，不使用 last-known／IP 補值，離開頁面停止。
+- 本機保護：AES-256-GCM 加密原圖與 GPS 欄位，Android Keystore 保存金鑰、AAD 綁定檔名／照片；Room 8→9 新欄位明確 Migration，舊原圖原子加密、舊座標轉密文並清空欄位。讀取在背景、Keystore handle 重用；已加密檔的恢復檢查只讀 32-byte 檔頭。
+- 網路防護：地圖資源 HTTPS／OpenFreeMap 來源限制，Calendar 固定官方 HTTPS 主機及傳輸欄位白名單，照片記事在引擎／投影層禁止同步（包含文字與拍攝時間）；一般事件依原授權同步。禁止明文 HTTP、維持全部備份排除。這是應用程式層防護，不是完整 OS 防火牆或全資料庫加密。
+- 使用者後續允許直接載入線上底圖，故最終預設線上，保留離線切換，不再要求每次確認。底圖服務仍可收到 IP、請求時間與圖磚區域，本機照片／記事文字／GPS 紀錄不會作為上傳資料。
+- 匯出：移除全部 APP／COM、原 EXIF／GPS／XMP／IPTC／縮圖／MakerNote／註解及尾端資料；不沿用拍攝時間檔名或 DATE_TAKEN，只重新加入必要方向資訊。壓縮影像資料不重新壓縮；原始紀錄不改。單張／批次均須人工檢查照片背景與相簿雲端備份提示。
+
+## 修改檔案
+
+新增 domain/MonthAgenda.kt、privacy/JpegPrivacy.kt、privacy/LocalVault.kt、privacy/MapResourceGate.kt、本機阻擋資源、network_security_config.xml、Room schema 9、MonthAgendaTest／PrivacyRulesTest／PrivacyStorageTest／CalendarCompactUiTest，以及 PRIVACY.md。
+
+修改 CalendarScreen、AchievementsScreen、AchievementArt／Cover、PhotoFiles／Exporter／RoomPhotoRepository、PhotoScreens／PhotoGpsControls／CameraScreen／PhotoExportButton／PhotoMapScreen、PhotoMapLayers、CalendarSyncEngine／Api／GoogleCalendarApi／SyncScreen、PhotoDao／NoteDatabase／AppContainer、Manifest／版本與相應測試、安全測試腳本、README／成就／地圖／版本文件。保留原有未提交修改，未重建、未解除安裝或清除使用者資料。
+
+## 建置與真實測試
+
+```powershell
+$env:JAVA_HOME='C:/Users/USER/.jdks/jdk-21.0.12.101-hotspot'
+./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+```
+
+- `feature15-delivery-build.log`：BUILD SUCCESSFUL，42 JVM／0 failures／0 errors，lint 0 errors／68 warnings，未壓制檢查。
+- `feature15-final-device.log`：37 tests 通過，119.771 秒。隔離資料庫、真實 Android Keystore、JPEG 清理／原檔不變、MediaStore、批次確認、Room 1–8→9 Migration、月曆搜尋／篩選／跨日／重疊、SVG 真繪製與 renderer 回退、線上底圖、原生點選／10,000 點聚合、放大字型等。此 run 在最後僅讀檔頭優化之前；其後完整重建，再以 `feature15-delivery-device.log` 3 項針對性測試確認加密／舊檔轉換／防護邊界通過。
+- `feature15-gps-device.log`：2 tests 通過，8.079 秒。私人 mock provider 驗證新鮮定位、過期拒絕、停止回呼、定位到我移動及不建立照片標記，還原定位權限／mock 模式。這是模擬輸入的 Android 裝置測試，不是實體 GPS 精度證明。
+- `feature15-landscape.log`：4 tests 通過，14.568 秒；1920×1080／480dpi（月曆、成就、地圖），含最高合併 300% 字型。這四項與主回歸重疊，不加算獨立測試數；已還原原螢幕。此 run 在最後背景／檔頭讀取優化前，UI 程式保持一致。
+- 本輪共 39 個不同裝置測試方法；最後針對性 3 項及橫向 4 項是重測。所有裝置測試先由 `scripts/Test-RegressionSafely.py --classes ... --log ...` 暫停 Google 同步再還原，GPS 另使用 `scripts/Test-PhotoGpsSafely.py --adb ... --serial emulator-5554 --log feature15-gps-device.log` 保護權限。沒有將測試記事傳送 Google。
+- 最初 `feature15-device.log` 33 tests／2 failures，原因為測試選中重複「全部分類」文字、300% 字型未捲到事件；修正選擇器及先捲動並 assertDisplayed 後，`feature15-verified-device.log` 33 tests 全通過，再完成上述 37 項回歸。測試截圖第一次擷取過早為空白，後來等待繪製並加 fixture 的系統安全邊界，重新核對真實截圖，未偽造畫面。
+- 截圖：`dist/NoteHub-0.15.0-calendar.png`、`dist/NoteHub-0.15.0-achievement.png`，隔離 fixture，非使用者私密記事，已目視核對事件長條、工具列與大字。
+
+## 交付與限制
+
+- APK `dist/NoteHub-0.15.0-debug.apk`，versionCode 15，82,998,447 bytes，SHA-256 `E15A938DBFF227DC4169F7C93B0CAD335C283AA926FCB22D503331D47B54FDB4`。已保留資料更新 Pixel 9 Pro VM／API 37。
+- 尚未驗證：金門實體環境 GPS、API 28／其他實機 GPU、正式簽署 release、本輪真實 Google 授權／外部同步端到端。未宣稱完全不崩潰或完整安全稽核。
+- 未加入軍事設施座標庫、公告區域自動比對或敏感內容 AI／OCR；缺少可靠合法範圍資料／有效期間與已驗證模型。已提供拍照與匯出人工檢查提醒，不冒稱能判定安全。畫面本身仍可能透露位置。
+- 不是整個 Room 加密：記事文字／時間仍在 App 私有資料庫；系統輔助 GPS、已解鎖／遭入侵裝置、舊 WAL／快閃殘留與他方相簿備份有實際限制。舊 Google 副本與已匯出公開檔不會擅自刪除。詳見 PRIVACY.md。
+- 後續：實機／發行驗收、正式發行前移除 debug 成就選單；若要區域提醒／OCR，先確認資料來源、時效與裝置端模型驗證範圍。
+
+---
+
+# 0.14.0 成就調整（2026-10-31）
+
+- 完成六項需求：除錯版成就選單＋明確達成／重置按鈕；移除進度卡下舊說明；停止 SVG 下載／分享與全部成就自動儲存；長條成就列表＋完整詳細介面；新增照片記事／本機行事曆事件才計次；SVG／PNG 頁首中文「拾光成就」。
+- 既有累積／成就保留；無日期待辦、追加照片、編輯、提醒、Google 匯入與同步不計次。手動測試達成／重置不改變真實累積數。
+- 新增資料與成就同一 Room 交易；Room schema 8 不變。停止既有成就背景匯出，不刪除已存在的公開圖片。原照片匯出不變。
+- 實際修改：NoteHubApplication、RoomNoteRepository（NoteDatabase.kt）、RoomPhotoRepository、ReminderCoordinator、AchievementRecorder／Exporter／ExportWorker／Art／Cover、AchievementDao、AchievementsScreen、HubViewModel、NoteHubApp、成就／照片測試、安全測試腳本、版本與文件。
+
+驗證命令：
+
+```powershell
+$env:JAVA_HOME='C:/Users/USER/.jdks/jdk-21.0.12.101-hotspot'
+./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+python scripts/Test-RegressionSafely.py --adb C:/Users/USER/AppData/Local/Android/Sdk/platform-tools/adb.exe --serial emulator-5554 --classes com.nqutaoitfteikc.notehub.AchievementRepositoryTest,com.nqutaoitfteikc.notehub.AchievementExportTest,com.nqutaoitfteikc.notehub.AchievementUiTest,com.nqutaoitfteikc.notehub.PhotoRepositoryTest,com.nqutaoitfteikc.notehub.CalendarImportTest --log feature14-release-device.log
+```
+
+- `feature14-release-build.log`：BUILD SUCCESSFUL，36 JVM／0 失敗，lint 0 errors／68 warnings（既有依賴與程式建議，未全面壓制）。
+- `feature14-release-device.log`：OK (24 tests)，29.235 秒，無略過；Pixel 9 Pro VM／API 37 保留資料更新成功。同步原開關已還原，無殘留救援備份。
+- `dist/NoteHub-0.14.0-achievement.png`：隔離測試成就詳細頁截圖，已目視確認中文頁首及圖片不越界。放大字型分享／關閉、手動選單均實際點擊通過。
+- 中途建置曾因 FlowRow 需實驗 API opt-in 失敗，已補正；最初 lint 曾在修改原始碼期間遇到 FIR 解析錯誤，停止修改後重新完整執行通過。截圖另發現 WebView 越界覆蓋文字，已調整比例並加裁切邊界，再建置及重跑 24 項測試通過。沒有隱藏失敗。
+- APK：`dist/NoteHub-0.14.0-debug.apk`，versionCode 14，81,492,198 bytes，SHA-256 `04CF9E81AF9CF10431A84A91D9C5D678927CC91A10D93F5A53E5C42D121C7075`。
+- 尚未驗證：正式簽署 release、其他實體手機／API 28、真實 Google 同步與 GPS。本輪未對 Google 寫入測試事件。完整整套含真實 AppContainer 新增事件／照片的測試須使用乾淨模擬器。
+
+待辦：正式版發行前移除暫時測試操作程式；補實機與 release 發行驗收。既有未提交修改均保留，未重建專案、未解除安裝、未提交 Git。
+
+---
+
 # 專案進度
 
-更新：2026-10-22（Asia/Taipei）
+更新：2026-10-31（Asia/Taipei）
 
-目前：0.10.0 已建置並更新安裝 Pixel 9 Pro，加入照片匯出、詳情頁照片、照片提醒入口與選用 Google 雙向同步。28 項單元測試、Lint 與最終完整模擬器回歸通過（64 項：62 通過、2 項真實匯入資料 opt-in 測試略過）。系統檔案工具實際匯出也已成功。使用者已回報 Google 雙向驗證成功；只讀核對確認每 1 小時同步已啟用，首次工作完成，仍有 1 筆衝突等待使用者選擇版本。
+目前：0.13.0 已完成、建置並保留資料安裝於 Pixel 9 Pro。累積次數、拍照 GPS、MapLibre 照片地圖／原生聚合及「定位到我」完成；36 項 JVM、41 項核心裝置、2 項 GPS 模擬與最終 6 項橫向 UI／實拍驗證通過。實體手機衛星精度仍待戶外驗收。
+
+## 0.13.0 範圍與驗證（2026-10-31）
+
+- [x] 保留既有未提交變更與資料。確認 :app、Wrapper 9.3.1／AGP 9.1.1／內建 Kotlin 2.2.10、JDK 21、SDK 36.1、Pixel_9_Pro／emulator-5554／API 37；沒有重建專案或解除安裝。
+- [x] 成就頁醒目顯示累積次數、下個門檻、尚差次數與進度；保留原 Reminder 計次與既有紀錄，長數字橫向捲動。
+- [x] 前景 GPS 精確／約略權限、GPS 關閉與誤差／新鮮度狀態；只接受快門前 15 秒內、回報誤差 ≤50m 的有效修正。非精確或無可靠修正時仍可拍照但不附位置。
+- [x] 每張照片保存位置、誤差、定位時間及 mock 標記；修改描述、延後保存、追加照片、重開不改寫原位置及拍攝時間。舊照片位置為空，不補推測座標。
+- [x] Room v8／7→8 Migration，歷史 schema 1–7 升級保留記事、照片、提醒、同步及成就；v7 fixture 的累積 42 次與已確認成就保持不變。這是獨立測試資料，不是使用者實際計數。
+- [x] 依使用者更正採 MapLibre Native，沒有加入 Google Maps SDK／key／Cloud 設定。官方 OpenGL ES 13.7.1＋OpenFreeMap Liberty；保留歸屬文字及來源按鈕。APK 四種 ABI，沒有 Vulkan 必備限制。
+- [x] 本機 GeoJSON 背景準備、非同步 source 更新；一個照片 source／三個圖層，縮放由原生聚合處理，沒有逐張建立 Marker／View；群組展開、100 筆 leaves 分頁、完整延遲清單、開啟對應照片記事。
+- [x] 原生聚合半徑60、source maxZoom22／cluster20／camera20，最大縮放同位置仍聚合。GeoJSON 不含記事文字或圖片檔，資料不寫回 Calendar。
+- [x] 「定位到我」主動讀取新定位、20秒等待與錯誤提示、平滑平移及獨立位置點；不新增照片歷史，完成／背景／離開停止監聽。短螢幕／大字型改用三個可及性圖示。
+- [x] 相機預覽與快門控制保持同一 lazy item，避免橫向捲動卸載預覽；短視窗縮短預覽，操作列可換行。GPS 選項放在預覽前。
+- [x] 原 Google 同步與定位權限／mock 模式在測試後還原，臨時螢幕尺寸還原；GPS 用專用測試供應者，未替換系統 GPS。
+- [ ] 實體手機戶外衛星精度／冷啟動／弱訊號／省電、API 28 權限與不同 GPU／廠牌尚待實測。模擬資料不能代表真實精度，也不保證任意手機永不卡頓。
+
+**建置與單元測試**：feature13-release-build.log，`.\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain` 成功。36 項 JVM、0 failures／0 errors；包含定位權限、新鮮度／誤差／無效座標、GeoJSON 私密文字排除與成就門檻上限。Lint 0 errors／70 warnings；MapLibre SDK 另引入 LogNotTimber 規則對既有 Android Log 用法提出38項建議，沒有為湊低數字全面壓制。繁中來源錯誤字串依 SDK 提示以 tools:override 明確覆寫私有資源。
+
+**核心裝置驗收**：feature13-release-device.log，**OK (41 tests)**，103.146秒，無略過；包含成就、各歷史資料庫、原記事／匯入／照片 Repository、位置持久化／刪除更新、原生三點合併與分離、萬點聚合、最大縮放同位置500點、真實 OpenFreeMap 向量底圖、實際原生單擊、字體／短視窗及 CameraX 多張真實拍攝、編輯與追加／移除。
+
+**GPS 與定位按鈕**：feature13-release-gps-device.log，**OK (2 tests)**，9.253秒。專用測試供應者輸入：接受新鮮精確 fix、拒絕過期、停止後不再接收；點「定位到我」平移至修正位置，照片 source 仍為空。全為明確 mock，沒有把它當作實體衛星精度證明。scripts/Test-PhotoGpsSafely.py 保存／還原粗細定位與 mock-location 模式，並透過原安全腳本暫停／還原同步。
+
+**最終 UI 文案與橫向**：上述核心驗收後，只調整已保存無 GPS 照片的文案與拍照隱私說明，避免永久照片顯示即時等待語意。最終文案 APK 重新 build／36 JVM／lint，並執行 feature13-release-landscape.log **OK (6 tests)**，69.629秒：PhotoMapUiTest 4、真實 PhotoCaptureUiTest 1、PhotoDetailsTest 1；640×360dp、合成系統200%＋App150%字型、原生標記點選、照片詳情與實拍完整流程。與前組有5項重複，不混加為全新測試數；不同裝置測試方法共44項。finally 恢復 physical 1280×2856。
+
+**測試隔離與範圍**：主腳本明確指定審核的隔離類別（新增位置 Repository／Map Native／Map UI／GPS／Camera／Details）；沒有在真實 AppContainer 新增測試提醒而發出使用者成就，也沒有讓測試記事寫入 Google。整套含真實 Reminder 的其他測試仍只適合無使用者資料的專用模擬器；沒有把舊版75項全部驗收冒充新版全套結果。
+
+**實際命令**：使用原 Wrapper／:app，`assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug`；`adb -s emulator-5554 install -r` 更新 app／test APK；`python scripts/Test-RegressionSafely.py --adb <adb> --serial emulator-5554 --classes <上述隔離類別> --log feature13-release-device.log`；GPS 用 `python scripts/Test-PhotoGpsSafely.py --adb <adb> --serial emulator-5554 --log feature13-release-gps-device.log`；橫向暫用 `wm size 1920x1080`、finally reset；`apksigner.bat verify --verbose --print-certs`；`git diff --check`。
+
+**中途失敗與修正**：首次地圖捲動輔助函式替換殘留造成編譯失敗，刪除錯誤函式後重建；原生測試改用實際 viewport RectF 呼叫正確 SDK API。第一次地圖單擊斷言太早，補上 native single-tap-confirm 等待，實際觸控與彈出清單後通過。橫向相機原因是 GPS item 插在預覽與快門之間，預覽離開 lazy viewport 被卸載，streaming停止；已將預覽與快門合組、GPS移前、短螢幕高度調整並用真實拍攝重測。沒有略過 streaming 檢查或把按鈕強制設為可拍。初版 feature13-landscape-device.log 的5項曾有1失敗，不算通過；修正版 feature13-landscape-fixed.log5項及最後6項均成功。最終保留所有紀錄。
+
+**主 App 最後核對**：feature13-navigation-check.log 確認 versionName 0.13.0、醒目累積卡與實際計數0、底部地圖及「定位到我」可見、sync_enabled=true、救援備份均已清除、physical size 1280×2856。實際介面截圖：dist/NoteHub-0.13.0-map.png。萬筆測試位置在樣式就緒後觀察到單一原生聚合約248ms，這是單次樣本，不是全流程FPS保證。此最後核對沒有點擊定位或新增使用者記事。
+
+**主要檔案**：domain/PhotoLocation.kt、PhotoMap.kt、Photos.kt；location/GpsPhotoLocation.kt；maps/PhotoMapLayers.kt；data/PhotoDao.kt、NoteDatabase.kt與schema8；photos/RoomPhotoRepository.kt；ui/PhotoGpsControls.kt、PhotoMapScreen.kt、CameraScreen.kt、PhotoScreens.kt、NoteDetails.kt、AchievementsScreen.kt、NoteHubApp.kt、NavigationSymbol.kt、HubViewModel.kt；NoteHubApplication.kt；Manifest、maplibre_strings.xml、版本目錄／build設定；新增GPS／Map／Repository測試、Migration及相機測試、兩個安全腳本、MAP_LOCATION_GUIDE.md與版本文件。Kotlin 路徑相對 app/src/main/java/com/nqutaoitfteikc/notehub/。
+
+**交付**：dist/NoteHub-0.13.0-debug.apk，102,145,813 bytes，SHA-256 `3C96EC5F2F5FDA95EBAB400657CA310B5FD1112B042120AC465DFAB465FEDD05`。來源 APK 相同、原有 v2 debug 簽章驗證通過（feature13-signature.log），更新安裝保留資料；未提交或推送 Git。操作／定位與隱私規則詳見 MAP_LOCATION_GUIDE.md。
+
+## 0.12.0 範圍與驗證（2026-10-22）
+
+- [x] 使用者確認每新增一筆獨立 Reminder 計一次；編輯、刪除、完成、重排及重開不重複，刪除不扣回。從本版新提醒開始，不編造舊歷史。
+- [x] 1／5／10／30 及後續 50／100／300／500／1,000……。後續門檻問題尚未得到選擇，經等待後採已說明的建議預設，可按偏好調整。
+- [x] 新提醒與累計／解鎖同一 Room 交易，門檻唯一主鍵，獨立於記事與提醒刪除；100 個併發交易、失敗回滾、編輯／刪除不重複及重開資料庫持久化已驗證。
+- [x] MVVM、AchievementRepository 與觀察／確認成就 Use Cases；Room v7／6→7 Migration，歷史 schema 1–6 保留原資料。未新增依賴或 Google 權限。
+- [x] 底部「成就」只顯示已解鎖項目；未確認彈窗持久化、動畫播放／暫停、SVG／PNG 分享與可捲動操作。
+- [x] 純程式生成自含 SVG，不同完整標題、動畫組合與節奏、逐級星芒／環飾／月桂。無個人記事內容、外部素材、腳本或網路載入。系統停用動畫時預設靜態預覽。
+- [x] PNG 自動寫入 Pictures/NoteHub 成就，原始動畫 SVG 自動保存 Download/NoteHub 成就；格式與相簿能力差異已明示，沒有將 PNG 當作 SVG。
+- [x] WorkManager 僅執行可延後匯出；MediaStore pending→寫入→公開、先存 URI、穩定檔名及擁有者查找恢復，失敗保留成就並退避重試，手動重試可立即替換工作。
+- [x] FileProvider 限定成就目錄，content URI／ClipData／唯讀暫時授權及系統分享 chooser；尚未達成者不能分享。沒有自動選接收者或傳送訊息。
+- [x] 維持所有既有未提交修改；沒有解除安裝、重建專案、清除使用者資料或處理其 Google 衝突。
+- [ ] API 28 儲存權限、實體手機／其他廠牌、各接收 App 對 SVG 動畫的支援及真實系統終止／低儲存／低記憶體矩陣尚待實測。匯出中斷恢復以 pending／URI 遺失狀態模擬；另有實際 SVG renderer 終止測試，但不宣稱完整 App／Worker kill 矩陣通過。
+
+**最終建置**：`feature12-final-hardened-build.log`（另有測試新增後的 `feature12-renderer-test-build.log`），JDK 21／現有 Wrapper／`:app`，執行 `assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug --console=plain` 全部成功。33 項 JVM（含 SVG XML 完整性／無外部內容／獨特標題與節奏／幾何複雜度／靜態模式及門檻上限），0 failures／0 errors；lint 0 errors／29 既有 warnings，未新增壓制。
+
+**最終裝置回歸**：`feature12-hardened-device.log`，Pixel_9_Pro／emulator-5554／API 37，**OK (30 tests)**，31.85 秒，沒有略過。包含 AchievementRepositoryTest／AchievementExportTest／AchievementUiTest、所有歷史資料升級、NavigationTest、原記事／匯入／照片 Repository 回歸。包含實際終止 WebView renderer，主 App 持續存活、原生徽章回退及分享操作可用。SVG 與 PNG 真的寫入 MediaStore，核對路徑／公開狀態、原始 SVG 內容、PNG 可解碼、URI 與影像重試、分享唯讀 URI；均只清理自己建立的媒體。
+
+**額外橫向**：`feature12-hardened-landscape.log`，暫時 wm size 1920x1080／density 480（640×360dp），**OK (4 tests)**，10.275 秒。合成系統 200%＋App 150% 的分享／關閉操作可捲至並點選，僅列已達成、SVG 實際繪製及兩個時間點的動畫像素變化皆通過。finally 還原 physical size 1280x2856，沒有變更裝置時區或系統字型設定。
+
+**實際主 App 核對**：透過 ADB 讀取當前可見節點後點擊底部「成就」，確認「已新增 0 筆獨立提醒」與空狀態；目前真實使用者資料未被測試發獎。安裝版本 versionCode 12／versionName 0.12.0。沒有實際向任何接收 App 傳送測試圖片。
+
+**命令**：`.\gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug --console=plain`；`adb -s emulator-5554 install -r` 更新 app 與測試 APK；`python scripts/Test-RegressionSafely.py --adb <SDK>/platform-tools/adb.exe --serial emulator-5554 --classes <上述9個隔離測試類別> --log feature12-hardened-device.log`，橫向另跑 AchievementUiTest；`apksigner.bat verify --verbose --print-certs`；`git diff --check`。
+
+**測試隔離**：原 sync_enabled 值在每輪前暫停、結束後還原，備份已清除。計次／成就測試使用獨立資料庫。0.12 起其他舊測試若在真正 AppContainer 新增提醒，會取得持久成就，所以安全腳本現在要求明確指定已審核類別，拒絕其他類別；完整裝置套件只可在沒有使用者資料的專用模擬器執行。本輪沒有把上版完整 75 項結果冒充成新版整套驗收。
+
+**中途發現**：初次編譯缺少 AppContainer 匯出服務註冊，修正後重建。初版 UI 節點測試通過但視覺截圖發現 SVG 留白；補上明確本機 HTML 尺寸、安全基底與繪製回呼後重測，並加上深色背景像素與時間差動畫檢查，不能再以 WebView 節點存在當作顯示成功。早期 lint 新增8項 KTX 建議已修正，最終回到29項既有警告。
+
+**APK**：`dist/NoteHub-0.12.0-debug.apk`，38,825,850 bytes，SHA-256 `F3D06F551C125BCB50BC8C25552831A157D6372C22B63141BDDAC33387CB0A03`。來源 APK 與 dist 雜湊相同，v2 debug 簽章驗證通過（`feature12-signature.log`），沿用原簽章。規則及格式相容性見 ACHIEVEMENTS.md；未推送／提交 Git。
+
+主要變更檔案：`achievements/` 的 AchievementArt、AchievementCover、MilestonePolicy、AchievementRecorder、AchievementExporter、AchievementExportWorker；`domain/Achievements.kt`；`data/AchievementDao.kt`、`RoomAchievementRepository.kt`、`NoteDatabase.kt` 與 schema 7；`ReminderCoordinator.kt`、`NoteHubApplication.kt`、`HubViewModel.kt`、`NoteHubApp.kt`、`NavigationSymbol.kt`、`AchievementsScreen.kt`；Manifest 與 `xml/achievement_paths.xml`；成就與 Migration 測試、安全測試腳本、版本設定及文件。以上 Kotlin 路徑相對 `app/src/main/java/com/nqutaoitfteikc/notehub/`。
+
+
+## 0.11.0 範圍與驗證（2026-10-22）
+
+- [x] 同篇記事多選、全選、單張與批次直接寫入系統 MediaStore 的 Pictures/NoteHub；不開啟檔案選擇器。
+- [x] API 29+ 使用 pending→寫入→公開流程；失敗／取消清理本次媒體列。API 28 使用相簿路徑與限定版本儲存權限。
+- [x] 逐張背景匯出、進度、部分失敗、重複點擊防護；ViewModel 持有工作與結果，畫面重建不重複執行。
+- [x] EXIF 原始拍攝時間、毫秒、時差與方向保留；原始私有 JPEG 不變。匯出副本不屬於 App 私有資料。
+- [x] App 字型 80／100／115／130／150%，在系統字型設定上調整，保留平台字型換算；DataStore 持久化及無效值回退。
+- [x] 月曆欄寬與日期文字完整寬度、可左右捲動；日時間軸隨字型調整，日期／時間輸入直排，提醒／編輯操作列換行。
+- [x] 照片詳情與批次選取列延遲載入、最大解碼尺寸 2048、同時最多一張解碼，降低大量照片峰值記憶體。
+- [x] 異常年份轉為驗證訊息、無效通知路徑顯示錯誤、還原畫面列舉值安全回退、錯誤／匯出訊息限定高度並可捲動。
+- [x] Room 仍 v6；沿用現有依賴與 Google 憑證，不重建專案或解除安裝。
+- [ ] Android 9 儲存權限流程尚未於 API 28 裝置實測；實體手機／其他廠牌比例／極端低記憶體及系統強制終止未全面驗證。
+
+建置：JDK 21、`:app`，`assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug`，feature11-final-build-verified.log 成功，31 項 JVM 測試通過，lint 0 errors／29 warnings（未新增壓制）。APK v2 debug 簽章驗證通過。
+
+最終完整裝置回歸：feature11-release-full-device.log，**OK (75 tests)**，101.431 秒，73 通過／2 項真實 Google 匯入資料核對因未給 googlePersistenceRun 而略過；沒有將略過算成成功。包含 MediaStore 相簿輸出與失敗清理、千張清單、多選／全選、20 次重複請求、照片缺檔、字型與畫面重建、合成 300% 字型、相機實拍、獨立鬧鐘及原有功能。使用 `python scripts/Test-RegressionSafely.py --adb <SDK>/platform-tools/adb.exe --serial emulator-5554 --log feature11-release-full-device.log`，確認同步開關已還原。先前 feature11-final-full-device.log 亦通過 75 項／117.256 秒；最新紀錄包含後續相機收起鍵盤與圖庫 IME 避讓修正，最終測試後未更動產品原始碼。
+
+APK：dist/NoteHub-0.11.0-debug.apk，38,318,819 bytes，SHA-256 `16DBC897B426E6D48F650778C49FABC824A8B287CD1121FEE49F0FD4326AFB58`；原 debug v2 簽章驗證通過，使用 install -r 保留資料安裝。Room schema 仍 v6。
+
+額外橫向實拍：暫時 wm size 1920x1080／density 480（640×360dp），feature11-landscape-camera-pass.log **OK (1 test)**，33.412 秒。真實 CameraX 多張拍攝、描述、預覽、實際鍵盤輸入、記事編輯、追加、移除與拍攝時間不變皆完成。先前橫向失敗：卡片新增匯出控制後高度超過視窗，測試只捲到 lazy item 而非內部按鈕，觸控未命中；修正為精確捲至按鈕並斷言可見後才點擊，沒有用語意呼叫繞過觸控。同時補上成功儲存後清除輸入焦點／收起鍵盤，圖庫清單避讓 IME。短視窗、橫向及合成大字型的 6 項照片版面測試在前次橫向批次均通過，當時失敗的是實拍測試，未將整批誤記為通過。螢幕與同步開關均已還原。
+
+測試涵蓋：相簿列公開狀態及路徑、EXIF／原檔不變、失敗列清理、批次選取與千張清單、20 次重複請求只啟動一批、缺一張仍輸出其餘照片、畫面重建、字型持久化及無效 Float、App 150%＋系統 200% 合成字型的預覽／月曆／照片操作，以及既有相機／提醒／記事／同步等回歸。Google 替身測試仍不表示所有外部情境已實測。
+
+測試隔離：scripts/Test-RegressionSafely.py 在 App 停止時暫停 sync_enabled，其他設定不變，測試後還原原值，防止測試記事寫入使用者 Google。Windows adb shell 的二進位 stdin 傳輸首輪出錯，當時 App 未啟動且測試未執行；已立即從備份逐位元還原並比對成功。工具改用 base64 原子寫入及逐位元驗證，並保留還原失敗的救援備份；後續測試已確認可正確暫停／還原。
+
+中途失敗與修正：通知測試最初直接呼叫 protected 方法而編譯失敗，改由 Instrumentation 派送並保留原 Intent 資訊，排除 ActivityScenario 關閉等待問題；舊設定測試改為先捲動 LazyColumn；日期文字測量讀取未合併語意樹。300% 合成字型測試發現月曆日期文字寬度不足，已改為使用整個日期格寬度置中並重測。各輪失敗保留於 feature11-*.log，不以中途寫入檔案宣稱通過。
+
+程序被系統強制終止時批次匯出不自動續傳；已完成副本保留，未完成 pending 媒體由系統回收。此次驗證不能保證任意裝置永不崩潰。
 
 ## 0.10.0 範圍與驗證（2026-10-22）
 

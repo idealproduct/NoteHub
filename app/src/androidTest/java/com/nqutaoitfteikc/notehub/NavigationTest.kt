@@ -23,7 +23,7 @@ class NavigationTest {
     private fun scrollTo(matcher: SemanticsMatcher) { compose.onNodeWithTag("calendar-content").performScrollToNode(matcher) }
     private fun listMode() { scrollTo(hasTestTag("view-dropdown")); compose.onNodeWithTag("view-dropdown").performClick(); compose.onNodeWithTag("view-LIST").performClick() }
     private fun monthMode() { scrollTo(hasTestTag("view-dropdown")); compose.onNodeWithTag("view-dropdown").performClick(); compose.onNodeWithTag("view-MONTH").performClick() }
-    private fun search(value: String) { scrollTo(hasTestTag("search")); compose.onNodeWithTag("search").performTextReplacement(value) }
+    private fun search(value: String) { if(compose.onAllNodesWithTag("search").fetchSemanticsNodes().isEmpty()) { scrollTo(hasTestTag("calendar-tools")); compose.onNodeWithTag("calendar-tools").performClick() }; scrollTo(hasTestTag("search")); compose.onNodeWithTag("search").performTextReplacement(value) }
     private fun waitSaved(title: String) { compose.waitUntil(10000) { notes().any { it.title == title } }; compose.waitForIdle(); if (compose.onAllNodesWithTag("note-details").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithText("返回").performClick(); compose.waitUntil(10000) { compose.onAllNodesWithTag("calendar-content").fetchSemanticsNodes().isNotEmpty() } }
 
     @Test fun localizedDateAndTimePickersOpenAndCancel() {

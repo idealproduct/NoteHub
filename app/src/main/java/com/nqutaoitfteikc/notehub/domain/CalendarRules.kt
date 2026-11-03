@@ -34,6 +34,7 @@ object CalendarRules {
     // A gap during daylight saving time is rejected instead of silently shifting the user's time.
     // During an overlap the earlier offset is used consistently and is disclosed in the editor.
     fun resolveLocal(date: LocalDate, time: LocalTime, zone: ZoneId): Long {
+        require(date.year in 1..9999) { "年份須介於 1 至 9999" }
         val local = LocalDateTime.of(date, time)
         val offsets = zone.rules.getValidOffsets(local)
         require(offsets.isNotEmpty()) { "此時間因日光節約時間調整而不存在，請選擇其他時間" }

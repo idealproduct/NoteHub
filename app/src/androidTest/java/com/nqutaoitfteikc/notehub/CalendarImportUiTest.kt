@@ -9,7 +9,9 @@ class CalendarImportUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     @Test fun configurationGatesLoginAndNeverClaimsGoogleSuccess() {
         compose.onNodeWithText("設定", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("Google 行事曆匯入").performScrollTo().performClick()
+        compose.onNodeWithTag("settings-tab-2").performClick()
+        compose.onNodeWithTag("settings-content").performScrollToNode(hasText("Google 行事曆匯入"))
+        compose.onNodeWithText("Google 行事曆匯入").performClick()
         if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isBlank()) {
             compose.onNodeWithText("尚未設定 Google OAuth").assertIsDisplayed()
             compose.onNodeWithText("使用 Google 帳號登入").assertIsNotEnabled()

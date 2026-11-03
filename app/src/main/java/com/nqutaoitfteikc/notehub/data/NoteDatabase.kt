@@ -1,6 +1,7 @@
 package com.nqutaoitfteikc.notehub.data
 
 import androidx.room.*
+import androidx.room.withTransaction
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.nqutaoitfteikc.notehub.domain.*
@@ -30,14 +31,49 @@ interface NoteDao {
     @Query("UPDATE notes SET completed = :completed WHERE id = :id") suspend fun setCompleted(id: String, completed: Boolean): Int
 }
 
-@Database(entities = [NoteEntity::class, ReminderEntity::class, PhotoEntity::class, PhotoDeletionEntity::class, CalendarImportEntity::class, CalendarSyncLink::class], version = 6, exportSchema = true)
+@Database(entities = [NoteEntity::class, ReminderEntity::class, PhotoEntity::class, PhotoDeletionEntity::class, CalendarImportEntity::class, CalendarSyncLink::class, AchievementProgress::class, AchievementEntity::class], version = 9, exportSchema = true)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun notes(): NoteDao
     abstract fun reminders(): ReminderDao
     abstract fun photos(): PhotoDao
     abstract fun calendarImports(): CalendarImportDao
     abstract fun calendarSync(): CalendarSyncDao
+    abstract fun achievements(): AchievementDao
     companion object {
+        /** One production opening path, also exercised by startup regression tests. */
+        fun open(context: android.content.Context, name: String = "notehub.db"): NoteDatabase =
+            Room.databaseBuilder(context.applicationContext, NoteDatabase::class.java, name)
+                .addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9)
+                .addCallback(object: RoomDatabase.Callback() {
+                    override fun onOpen(db: SupportSQLiteDatabase) {
+                        // Assignment PRAGMAs can return a row on newer Android SQLite drivers.
+                        db.query("PRAGMA secure_delete=ON").use { cursor ->
+                            check(cursor.moveToFirst() && cursor.getInt(0)==1) { "無法啟用資料庫安全刪除設定" }
+                        }
+                    }
+                }).build()
+
+        val MIGRATION_8_9 = object : Migration(8,9) {
+            override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("ALTER TABLE photos ADD COLUMN sealedLocation TEXT") }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE photos ADD COLUMN latitude REAL")
+                db.execSQL("ALTER TABLE photos ADD COLUMN longitude REAL")
+                db.execSQL("ALTER TABLE photos ADD COLUMN locationAccuracy REAL")
+                db.execSQL("ALTER TABLE photos ADD COLUMN locationMeasuredAt INTEGER")
+                db.execSQL("ALTER TABLE photos ADD COLUMN locationMock INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE photos ADD COLUMN locationStatus TEXT NOT NULL DEFAULT 'NOT_RECORDED'")
+            }
+        }
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS achievement_progress (id INTEGER NOT NULL, total INTEGER NOT NULL, PRIMARY KEY(id))")
+                db.execSQL("INSERT OR IGNORE INTO achievement_progress (id,total) VALUES(1,0)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS achievements (milestone INTEGER NOT NULL, unlockedAt INTEGER NOT NULL, announced INTEGER NOT NULL, albumUri TEXT, svgUri TEXT, exportError TEXT, exported INTEGER NOT NULL, PRIMARY KEY(milestone))")
+            }
+        }
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS calendar_sync (account TEXT NOT NULL, calendarId TEXT NOT NULL, eventId TEXT NOT NULL, noteId TEXT NOT NULL, localHash TEXT NOT NULL, remoteHash TEXT NOT NULL, conflict TEXT NOT NULL, PRIMARY KEY(account, calendarId, eventId))")
@@ -89,10 +125,17 @@ internal fun NoteEntity.toDomain() = Note(id, title, createdAt, description, cat
 internal fun Note.toEntity() = NoteEntity(id, title, createdAt, description, category, completed,
     kind.name, startDay, endDayExclusive, startMillis, endMillis, zoneId, photoCapturedAt)
 
-class RoomNoteRepository(private val dao: NoteDao) : NoteRepository {
+class RoomNoteRepository(private val dao: NoteDao, private val database: NoteDatabase? = null) : NoteRepository {
     override fun observe() = dao.observe().map { rows -> rows.map { it.toDomain() } }
     override suspend fun get(id: String) = dao.get(id)?.toDomain()
-    override suspend fun insert(note: Note) = dao.insert(note.toEntity())
+    override suspend fun insert(note: Note) {
+        val db=database
+        if(db==null) dao.insert(note.toEntity()) else db.withTransaction {
+            dao.insert(note.toEntity())
+            if(note.kind!=ScheduleKind.TODO && note.photoCapturedAt==null)
+                com.nqutaoitfteikc.notehub.achievements.AchievementRecorder(db.achievements(),com.nqutaoitfteikc.notehub.achievements.MilestonePolicy(listOf(1,3,5))::contains).recordNewRecord(System.currentTimeMillis())
+        }
+    }
     override suspend fun update(note: Note) { check(dao.update(note.toEntity()) == 1) { "事項已不存在" } }
     override suspend fun delete(id: String) = dao.delete(id)
     override suspend fun setCompleted(id: String, completed: Boolean) { check(dao.setCompleted(id, completed) == 1) { "事項已不存在" } }

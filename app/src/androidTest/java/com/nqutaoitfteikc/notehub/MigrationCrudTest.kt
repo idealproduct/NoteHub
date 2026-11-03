@@ -25,7 +25,7 @@ class MigrationCrudTest {
             db.execSQL("INSERT INTO notes VALUES('legacy', '舊版記事', 123)")
             db.version = 1
         }
-        fun open() = Room.databaseBuilder(context, NoteDatabase::class.java, name).addMigrations(NoteDatabase.MIGRATION_1_2, NoteDatabase.MIGRATION_2_3, NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6).build()
+        fun open() = Room.databaseBuilder(context, NoteDatabase::class.java, name).addMigrations(NoteDatabase.MIGRATION_1_2, NoteDatabase.MIGRATION_2_3, NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6, NoteDatabase.MIGRATION_6_7, NoteDatabase.MIGRATION_7_8, NoteDatabase.MIGRATION_8_9).build()
         var db = open()
         try {
             var repository = RoomNoteRepository(db.notes())

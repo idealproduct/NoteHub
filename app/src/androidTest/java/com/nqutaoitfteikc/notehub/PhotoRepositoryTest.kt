@@ -53,6 +53,7 @@ class PhotoRepositoryTest {
             val second = repository.store(session, CapturedImage(photoFixture(), CaptureTime(200000, CaptureTimeSource.SENSOR_REALTIME), 0, "Asia/Taipei"))
             val id = repository.commit(session, null, "照片記事", "延後儲存", "生活")
             assertEquals(id, repository.commit(session, null, "重複點擊", "", ""))
+            assertEquals(1L,database.achievements().total())
             val note = requireNotNull(database.notes().get(id))
             assertEquals(100000L, note.createdAt); assertEquals(100000L, note.photoCapturedAt)
             SaveNote(RoomNoteRepository(database.notes()))(id, NoteDraft("修改描述", "另一段描述"))
@@ -66,6 +67,7 @@ class PhotoRepositoryTest {
             repository.recoverFiles()
             assertFalse(repository.files.file(first.fileName).exists())
             assertEquals(2, repository.observe().first().count { it.noteId == id })
+            assertEquals(1L,database.achievements().total())
             assertEquals(100000L, database.notes().get(id)?.photoCapturedAt)
             repository.deleteNoteInTransaction(id) { database.notes().delete(id) }
             repository.recoverFiles()
@@ -120,7 +122,7 @@ class PhotoRepositoryTest {
             db.execSQL("INSERT INTO reminders VALUES('r','v3',999999,'rev',1,NULL,'PENDING')")
             db.version = 3
         }
-        val db = Room.databaseBuilder(context, NoteDatabase::class.java, name).addMigrations(NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6).build()
+        val db = Room.databaseBuilder(context, NoteDatabase::class.java, name).addMigrations(NoteDatabase.MIGRATION_3_4, NoteDatabase.MIGRATION_4_5, NoteDatabase.MIGRATION_5_6, NoteDatabase.MIGRATION_6_7, NoteDatabase.MIGRATION_7_8, NoteDatabase.MIGRATION_8_9).build()
         try {
             assertEquals("舊記事", db.notes().get("v3")?.title)
             assertNull(db.notes().get("v3")?.photoCapturedAt)

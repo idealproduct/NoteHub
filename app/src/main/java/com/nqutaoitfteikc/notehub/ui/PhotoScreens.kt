@@ -22,6 +22,8 @@ import com.nqutaoitfteikc.notehub.domain.*
 import com.nqutaoitfteikc.notehub.photos.PhotoFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
@@ -34,22 +36,24 @@ fun captureLabel(time: Long): String = Instant.ofEpochMilli(time).atZone(ZoneId.
 @Composable
 fun PhotoImage(photo: Photo, files: PhotoFiles, modifier: Modifier = Modifier, maxSize: Int = 1200) {
     val result by produceState<Result<ImageBitmap>?>(null, photo.fileName, photo.rotationDegrees, maxSize) {
-        value = withContext(Dispatchers.IO) {
+        value = withContext(Dispatchers.IO) { photoDecodeGate.withPermit {
             runCatching {
                 val file = files.file(photo.fileName)
                 if (!file.isFile) throw IOException("找不到照片檔案")
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(file.absolutePath, bounds)
+                val bytes=files.read(photo.fileName)
+                BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
                 if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("照片無法讀取")
                 var sample = 1
-                while (bounds.outWidth / sample > maxSize || bounds.outHeight / sample > maxSize) sample *= 2
-                val bitmap = BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+                val limit = maxSize.coerceIn(128, 2048)
+                while (bounds.outWidth / sample > limit || bounds.outHeight / sample > limit) sample *= 2
+                val bitmap = BitmapFactory.decodeByteArray(bytes,0,bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
                     ?: throw IOException("照片無法讀取")
                 val rotated = if (photo.rotationDegrees == 0) bitmap else android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height,
                     Matrix().apply { postRotate(photo.rotationDegrees.toFloat()) }, true).also { if (it !== bitmap) bitmap.recycle() }
                 rotated.asImageBitmap()
             }
-        }
+        } }
     }
     val image = result?.getOrNull()
     if (image != null) Image(image, "照片，拍攝於 ${captureLabel(photo.capturedAt)}", modifier.testTag("photo-image-${photo.id}"), contentScale = ContentScale.Fit)
@@ -57,6 +61,8 @@ fun PhotoImage(photo: Photo, files: PhotoFiles, modifier: Modifier = Modifier, m
         Text(if (result == null) "讀取照片中…" else "照片檔案遺失或無法讀取，拍攝紀錄仍保留", color = if (result?.isFailure == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
     }
 }
+
+private val photoDecodeGate = Semaphore(1)
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -130,11 +136,12 @@ fun PhotoGalleryScreen(note: Note, photos: List<Photo>, state: HubState, model: 
         }
         return
     }
-    LazyColumn(Modifier.fillMaxSize().testTag("photo-gallery"), state = galleryScroll, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize().imePadding().testTag("photo-gallery"), state = galleryScroll, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { FlowRow { TextButton(onClick = onBack) { Text("返回") }; TextButton(onClick = onEdit) { Text("編輯記事描述") } } }
         item { Text(note.title, style = MaterialTheme.typography.headlineLarge) }
         item { Text("記事時間：${captureLabel(requireNotNull(note.photoCapturedAt))}", modifier = Modifier.testTag("photo-note-time")) }
         item { Text(note.description.ifEmpty { "尚未輸入描述" }) }
+        if (photos.isNotEmpty()) item { PhotoBatchExport(photos, state.exportBusy, model::exportPhotos) }
         item { OutlinedButton(onClick = onReminders) { Text("管理提醒（${state.reminders.count { it.noteId == note.id }} 筆）") } }
         item { Button(enabled = !state.saving && state.capturingSession == null, onClick = { onCamera(java.util.UUID.randomUUID().toString()) }, modifier = Modifier.testTag("append-photos")) { Text("加入更多照片") } }
         if (photos.isEmpty()) item { Text("這篇記事目前沒有照片，原始拍攝時間仍保留。") }
@@ -143,8 +150,9 @@ fun PhotoGalleryScreen(note: Note, photos: List<Photo>, state: HubState, model: 
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     PhotoImage(photo, model.photoFiles, Modifier.fillMaxWidth().height(240.dp).clickable { previewId = photo.id })
                     Text("拍攝：${captureLabel(photo.capturedAt)}")
+                        Text(if(photo.location==null) "此照片未紀錄拍攝位置" else photoLocationLabel(photo.location,photo.locationStatus),style=MaterialTheme.typography.bodySmall)
                     if (photo.caption.isNotEmpty()) Text(photo.caption)
-                    PhotoExportButton(photo, model.photoFiles)
+                    PhotoExportButton(photo, state.exportBusy, model::exportPhotos)
                     FlowRow {
                         TextButton(onClick = { previewId = photo.id }, modifier = Modifier.testTag("preview-photo-${photo.id}")) { Text("預覽與照片說明") }
                         TextButton(enabled = !state.saving, onClick = { removeId = photo.id }, modifier = Modifier.testTag("remove-photo-${photo.id}")) { Text("移除照片") }

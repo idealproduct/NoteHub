@@ -9,7 +9,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 
 data class HubState(val notes: List<Note> = emptyList(), val theme: ThemeMode = ThemeMode.SYSTEM, val loading: Boolean = true, val saving: Boolean = false, val error: String? = null, val reminders: List<Reminder> = emptyList(),
-    val photos: List<Photo> = emptyList(), val pendingPhotoCleanup: Int = 0, val capturingSession: String? = null)
+    val photoMap: PhotoMapData = PhotoMapData(),
+    val photos: List<Photo> = emptyList(), val pendingPhotoCleanup: Int = 0, val capturingSession: String? = null,
+    val achievements: List<Achievement> = emptyList(), val achievementTotal: Long = 0,
+    val fontScale: Float = 1f, val exportBusy: Boolean = false, val exportProgress: Int = 0, val exportTotal: Int = 0, val exportMessage: String? = null)
 class HubViewModel(private val container: AppContainer) : ViewModel() {
     val calendarSyncFactory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -25,7 +28,36 @@ class HubViewModel(private val container: AppContainer) : ViewModel() {
     private var captureTimeout: kotlinx.coroutines.Job? = null
     private val mutableState = MutableStateFlow(HubState())
     val state = mutableState.asStateFlow()
+    val achievementExporter get() = container.achievementExporter
+    fun testAchievement(milestone: Long, reset: Boolean) { viewModelScope.launch {
+        try { container.testAchievement(milestone,reset) }
+        catch(e: kotlinx.coroutines.CancellationException) { throw e }
+        catch(e: Exception) { report(e,"無法調整測試成就") }
+    } }
+    fun recoverAchievements() = container.exportAchievements()
+    fun acknowledgeAchievement(milestone: Long) { viewModelScope.launch {
+        try { container.acknowledgeAchievement(milestone) }
+        catch(e: CancellationException) { throw e }
+        catch(e: Exception) { report(e,"無法更新成就狀態，請重試") }
+    } }
+    fun achievementShareFailed(e: Exception) = report(e,"無法開啟分享選單，請稍後重試")
     init {
+        viewModelScope.launch {
+            container.observePhotoMap().catch { report(it,"無法讀取照片位置，請重新開啟地圖") }
+                .collect { data -> mutableState.update { it.copy(photoMap=data) } }
+        }
+        viewModelScope.launch {
+            container.observeAchievements().catch { report(it,"無法讀取成就，請重新開啟 App") }
+                .collect { rows -> mutableState.update { it.copy(achievements=rows) } }
+        }
+        viewModelScope.launch {
+            container.observeAchievementTotal().catch { report(it,"無法讀取成就累計次數") }
+                .collect { total -> mutableState.update { it.copy(achievementTotal=total) } }
+        }
+        viewModelScope.launch {
+            container.observeFontScale.catch { report(it, "無法讀取字型設定，暫時使用標準大小") }
+                .collect { scale -> mutableState.update { it.copy(fontScale = scale) } }
+        }
         viewModelScope.launch {
             try { container.syncSettings.flow.first().let { if (it.enabled) container.scheduleCalendarSync(it.hours) } }
             catch (e: CancellationException) { throw e }
@@ -51,6 +83,38 @@ class HubViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
     val photoFiles get() = container.photos.files
+    fun missingOpenedNote() { mutableState.update { it.copy(error = "此事項已不存在，或通知連結無效") } }
+    fun clearExportMessage() { mutableState.update { it.copy(exportMessage = null) } }
+    fun setFontScale(scale: Float) {
+        viewModelScope.launch {
+            try { container.setFontScale(scale) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { report(e, "無法儲存字型大小，請重試") }
+        }
+    }
+    fun exportPhotos(ids: List<String>) {
+        if (state.value.exportBusy || ids.isEmpty()) return
+        val wanted = ids.toSet()
+        val selected = state.value.photos.filter { it.id in wanted }
+        if (selected.isEmpty()) { report(IllegalArgumentException("照片已不存在"), "所選照片已不存在"); return }
+        if (selected.size != wanted.size) { report(IllegalArgumentException("選取已變更"), "部分照片已不存在，請重新選取"); return }
+        if (selected.map { it.noteId }.distinct().size != 1) { report(IllegalArgumentException("不同記事"), "請選擇同一篇記事的照片"); return }
+        mutableState.update { it.copy(exportBusy = true, exportProgress = 0, exportTotal = selected.size, exportMessage = null) }
+        viewModelScope.launch {
+            var succeeded = 0
+            var failed = 0
+            try {
+                selected.forEachIndexed { index, photo ->
+                    try { container.photoExporter.toAlbum(photo); succeeded++ }
+                    catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { failed++; Log.e("NoteHubPhotos", "相簿匯出失敗", e) }
+                    mutableState.update { it.copy(exportProgress = index + 1) }
+                }
+                mutableState.update { it.copy(exportMessage = if (failed == 0) "已儲存 $succeeded 張照片至 NoteHub 相簿"
+                    else "已儲存 $succeeded 張，$failed 張失敗；請確認權限與可用空間後重試失敗的照片") }
+            } finally { mutableState.update { it.copy(exportBusy = false) } }
+        }
+    }
     val photoCaptureExecutor get() = container.photoCaptureExecutor
     fun beginCapture(sessionId: String): String? {
         if (state.value.capturingSession != null || state.value.saving) return null

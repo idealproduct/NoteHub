@@ -5,7 +5,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 
-class PhotoFiles(private val directory: File) {
+class PhotoFiles(private val directory: File, private val vault: com.nqutaoitfteikc.notehub.privacy.LocalVault? = null) {
     fun file(name: String): File {
         require(name.matches(Regex("[a-f0-9-]{36}\\.jpg"))) { "照片檔名格式不正確" }
         val result = File(directory, name)
@@ -21,9 +21,26 @@ class PhotoFiles(private val directory: File) {
         val target = file(name)
         val partial = File(directory, "$name.part")
         try {
-            FileOutputStream(partial).use { output -> output.write(bytes); output.fd.sync() }
+            FileOutputStream(partial).use { output -> output.write(vault?.seal(bytes,name) ?: bytes); output.fd.sync() }
             if (!partial.renameTo(target)) throw IOException("無法完成照片寫入")
         } finally { if (partial.exists() && !partial.delete()) throw IOException("無法清理未完成的照片檔案") }
+    }
+    fun read(name: String): ByteArray {
+        val target=file(name)
+        require(target.length()<=25*1024*1024+64) { "照片檔案過大" }
+        val bytes=target.readBytes()
+        return if(vault?.encrypted(bytes)==true) vault.open(bytes,name) else bytes
+    }
+    fun protect(name: String) {
+        if(vault==null) return
+        val target=file(name)
+        if(!target.isFile) return
+        if(target.length()>=32) {
+            val header=ByteArray(32)
+            java.io.DataInputStream(target.inputStream()).use { it.readFully(header) }
+            if(vault.encrypted(header)) return
+        }
+        write(name,target.readBytes())
     }
     fun remove(name: String) {
         val target = file(name)

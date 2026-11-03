@@ -17,9 +17,10 @@ object CaptureTimeRules {
 data class Photo(
     val id: String, val noteId: String?, val sessionId: String, val fileName: String,
     val capturedAt: Long, val rotationDegrees: Int, val zoneId: String,
-    val timeSource: CaptureTimeSource, val caption: String = ""
+    val timeSource: CaptureTimeSource, val caption: String = "",
+    val location: PhotoLocation? = null, val locationStatus: PhotoLocationStatus = PhotoLocationStatus.NOT_RECORDED
 )
-data class CapturedImage(val bytes: ByteArray, val time: CaptureTime, val rotationDegrees: Int, val zoneId: String)
+data class CapturedImage(val bytes: ByteArray, val time: CaptureTime, val rotationDegrees: Int, val zoneId: String, val location: LocationSnapshot = LocationSnapshot())
 interface PhotoRepository {
     fun observe(): Flow<List<Photo>>
     fun pendingCleanupCount(): Flow<Int>

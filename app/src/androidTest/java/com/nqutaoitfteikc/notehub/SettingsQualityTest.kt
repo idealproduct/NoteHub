@@ -40,12 +40,15 @@ class SettingsQualityTest {
     }
     @Test fun settingsShowActualCameraStatusVersionAndLocalStoragePolicy() {
         compose.onNodeWithText("設定", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("settings-tab-1").performClick()
         val context = compose.activity
         val camera = context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
         val allowed = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         val label = when { !camera -> "相機：此裝置未提供鏡頭"; allowed -> "相機：已允許"; else -> "相機：未允許" }
-        compose.onNodeWithText(label).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("settings-content").performScrollToNode(hasText(label))
+        compose.onNodeWithText(label).assertIsDisplayed()
         compose.onNodeWithText("相機權限設定").assertExists()
+        compose.onNodeWithTag("settings-tab-3").performClick()
         compose.onNodeWithTag("settings-content").performScrollToNode(hasText("記事、照片與設定保存在此裝置", substring = true))
         compose.onNodeWithText("記事、照片與設定保存在此裝置", substring = true).assertIsDisplayed()
         compose.onNodeWithTag("settings-content").performScrollToNode(hasText("NoteHub ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）", substring = true))

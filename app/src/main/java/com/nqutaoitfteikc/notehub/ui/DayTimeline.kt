@@ -27,23 +27,26 @@ internal fun DayTimeline(day: LocalDate, notes: List<Note>, zone: ZoneId, open: 
     val end = day.plusDays(1).atStartOfDay(zone)
     val minutes = Duration.between(start, end).toMinutes()
     val density = LocalDensity.current
+    val factor = density.fontScale.coerceAtLeast(1f)
+    val minuteHeight = 1.5f * factor
+    val axisWidth = (58f * factor).dp
     val scroll = rememberScrollState()
     LaunchedEffect(day, zone) {
         val minute = blocks.minOfOrNull { it.startMinute } ?: 480.0
-        scroll.scrollTo(with(density) { (minute.toFloat() * 1.5f).dp.roundToPx() })
+        scroll.scrollTo(with(density) { (minute.toFloat() * minuteHeight).dp.roundToPx() })
     }
     Text("時間表 · 可上下捲動；重疊較多時可左右捲動", style = MaterialTheme.typography.bodySmall)
     BoxWithConstraints(Modifier.fillMaxWidth().height(520.dp).testTag("day-timeline")) {
-        val areaWidth = maxOf(maxWidth - 58.dp, 120.dp * (blocks.maxOfOrNull { it.columns } ?: 1))
+        val areaWidth = maxOf(maxWidth - axisWidth, (120f * factor).dp * (blocks.maxOfOrNull { it.columns } ?: 1))
         Box(Modifier.fillMaxSize().verticalScroll(scroll).horizontalScroll(rememberScrollState())) {
-            Box(Modifier.width(areaWidth + 58.dp).height((minutes * 1.5f + 24f).dp)) {
+            Box(Modifier.width(areaWidth + axisWidth).height((minutes * minuteHeight + 24f * factor).dp)) {
                 var tick = start
                 while (!tick.isAfter(end)) {
-                    val offset = Duration.between(start, tick).toMinutes().toFloat() * 1.5f
+                    val offset = Duration.between(start, tick).toMinutes().toFloat() * minuteHeight
                     val label = if (tick == end) "24:00" else tick.format(DateTimeFormatter.ofPattern("HH:mm"))
                     Row(Modifier.offset(y = offset.dp).fillMaxWidth()) {
                         Text(if (minutes != 1440L && tick != end) "$label\n${tick.offset}" else label,
-                            modifier = Modifier.width(58.dp), style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.width(axisWidth), style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         HorizontalDivider(Modifier.padding(top = 8.dp).testTag("timeline-tick-${Duration.between(start, tick).toMinutes()}"), color = MaterialTheme.colorScheme.outlineVariant)
                     }
@@ -51,14 +54,14 @@ internal fun DayTimeline(day: LocalDate, notes: List<Note>, zone: ZoneId, open: 
                 }
                 blocks.forEach { block ->
                     val width = areaWidth / block.columns
-                    val height = ((block.endMinute - block.startMinute) * 1.5).toFloat().dp.coerceAtLeast(2.dp)
+                    val height = ((block.endMinute - block.startMinute) * minuteHeight).toFloat().dp.coerceAtLeast(2.dp)
                     val continuation = listOfNotNull(if (block.continuesBefore) "由前日延續" else null,
                         if (block.continuesAfter) "延續至次日" else null).joinToString(" · ")
                     val clock = DateTimeFormatter.ofPattern("HH:mm")
                     val from = if (block.continuesBefore) "00:00" else Instant.ofEpochMilli(block.note.startMillis!!).atZone(zone).format(clock)
                     val until = if (block.endMinute == minutes.toDouble()) "24:00" else Instant.ofEpochMilli(block.note.endMillis!!).atZone(zone).format(clock)
                     Surface(onClick = { open(block.note.id) },
-                        modifier = Modifier.offset(x = 58.dp + width * block.column, y = (block.startMinute * 1.5).toFloat().dp + 8.dp)
+                        modifier = Modifier.offset(x = axisWidth + width * block.column, y = (block.startMinute * minuteHeight).toFloat().dp + 8.dp)
                             .width(width - 4.dp).height(height).testTag("timeline-${block.note.id}")
                             .semantics { contentDescription = "${block.note.title}，$from 至 $until，$continuation，開啟詳細資訊" },
                         shape = RoundedCornerShape(6.dp),
