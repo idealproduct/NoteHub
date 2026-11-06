@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="maplibre_attributionsDialogTitle">地圖資料來源</string>
+    <string name="maplibre_attributionsIconContentDescription">地圖資料來源</string>
+    <string name="maplibre_attributionErrorNoBrowser" tools:override="true">無法開啟連結，請確認已安裝瀏覽器。</string>
+</resources>
